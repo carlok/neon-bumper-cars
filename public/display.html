@@ -42,6 +42,10 @@ socket.on('bump', (d) => eventQueue.push({ type:'bump', ...d }));
 socket.on('player-eliminated', (id) => eventQueue.push({ type:'eliminated', id }));
 socket.on('shot-hit', (d) => eventQueue.push({ type:'shot-hit', ...d }));
 socket.on('shot-fired', (d) => eventQueue.push({ type:'shot-fired', ...d }));
+socket.on('obstacles-reset', (newObs) => {
+  obstacles = newObs;
+  eventQueue.push({ type: 'obstacles-reset', obstacles: newObs });
+});
 
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -166,7 +170,7 @@ class GameScene extends Phaser.Scene {
     this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
       fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.14', {
+    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.15', {
       fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
@@ -215,6 +219,11 @@ class GameScene extends Phaser.Scene {
       if (ev.type === 'eliminated') this.doEliminated(ev.id);
       if (ev.type === 'shot-hit') this.doShotHit(ev);
       if (ev.type === 'shot-fired') this.doShotFlash(ev);
+      if (ev.type === 'obstacles-reset') {
+        for (const t of this.obsTexts) t.destroy();
+        this.obsTexts = [];
+        this.obstaclesCreated = false;
+      }
     }
 
     // Update / create player graphics

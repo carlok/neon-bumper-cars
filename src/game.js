@@ -138,12 +138,12 @@ function spawnPosition(obstacles, players, bots, excludeId, rng = Math.random) {
  * @param {function} rng - random number generator, default Math.random
  * @returns {Array} obstacles array
  */
-function generateObstacles(rng = Math.random) {
+function generateObstacles(count = OBSTACLE_COUNT, rng = Math.random) {
   const obstacles = [];
   const margin = 120;
   const pad = PLAYER_SIZE; // minimum gap between obstacles
   let attempts = 0;
-  while (obstacles.length < OBSTACLE_COUNT && attempts < 500) {
+  while (obstacles.length < count && attempts < 500) {
     attempts++;
     const type = OBSTACLE_TYPES[Math.floor(rng() * OBSTACLE_TYPES.length)];
     const sz   = OBS_SIZES[type];

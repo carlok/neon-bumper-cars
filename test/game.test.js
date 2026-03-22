@@ -249,10 +249,15 @@ describe('generateObstacles', () => {
       seed = (seed * 1664525 + 1013904223) & 0xffffffff;
       return (seed >>> 0) / 0x100000000;
     };
-    const obs1 = generateObstacles(seededRng);
+    const obs1 = generateObstacles(OBSTACLE_COUNT, seededRng);
     seed = 42;
-    const obs2 = generateObstacles(seededRng);
+    const obs2 = generateObstacles(OBSTACLE_COUNT, seededRng);
     expect(obs1.map(o => o.x)).toEqual(obs2.map(o => o.x));
+  });
+
+  test('custom count returns correct number of obstacles', () => {
+    const obs = generateObstacles(4);
+    expect(obs.length).toBe(4);
   });
 
   test('obstacles stay within arena margins', () => {

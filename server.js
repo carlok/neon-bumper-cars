@@ -23,13 +23,15 @@ const io     = new Server(server, { cors: { origin: '*' } });
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── State ──────────────────────────────────────────────────────────────
-let gameState  = 'WAITING'; // WAITING | PLAYING | STOPPED
-const players  = {};        // socketId → player
-const bots     = {};        // botId    → bot
-let obstacles  = [];        // { x, y, w, h, type }
-const coins    = [];        // [{ x, y, emoji }, ...]  — count scales with player count
-const bullets  = [];        // { x, y, vx, vy, ownerId, ownerColor, dist }
-let colorIndex = 0;
+let gameState     = 'WAITING'; // WAITING | PLAYING | STOPPED
+const players     = {};        // socketId → player
+const bots        = {};        // botId    → bot
+let obstacles     = [];        // { x, y, w, h, type }
+const coins       = [];        // [{ x, y, emoji }, ...]  — count scales with player count
+const bullets     = [];        // { x, y, vx, vy, ownerId, ownerColor, dist }
+let colorIndex    = 0;
+let autoplayActive = false;
+const AUTOPLAY_COUNT = MAX_PLAYERS; // 32 fake players for stress testing
 
 // ── Helpers ───────────────────────────────────────────────────────────
 function nextColor() {
@@ -48,6 +50,42 @@ function randomName() {
   const adj  = NAME_ADJ [Math.floor(Math.random() * NAME_ADJ .length)];
   const noun = NAME_NOUN[Math.floor(Math.random() * NAME_NOUN.length)];
   return `${adj} ${noun}`;
+}
+
+// ── Obstacle count helper ─────────────────────────────────────────────
+// Fewer obstacles when more players (more room to move).
+// Formula: max(4, 20 - floor(playerCount / 2))
+function obstacleCount(playerCount) {
+  return Math.max(4, OBSTACLE_COUNT - Math.floor(playerCount / 2));
+}
+
+// ── Autoplay ──────────────────────────────────────────────────────────
+function startAutoplay() {
+  autoplayActive = true;
+  for (let i = 0; i < AUTOPLAY_COUNT; i++) {
+    const id  = `auto-${i}`;
+    const pos = spawnPosition(obstacles, players, bots, id);
+    players[id] = {
+      id, x: pos.x, y: pos.y, vx: 0, vy: 0,
+      color: nextColor(), emoji: nextFaceEmoji(), name: randomName(),
+      score: 0, lives: 3,
+      invulnUntil: Date.now() + INVULN_MS, alive: true, facing: 'up',
+      lastShotAt: 0, shotsLeft: MAX_SHOTS, isAutoplay: true,
+    };
+  }
+  console.log(`[AUTOPLAY] Started ${AUTOPLAY_COUNT} autoplay bots`);
+}
+
+function stopAutoplay() {
+  for (let i = 0; i < AUTOPLAY_COUNT; i++) {
+    const id = `auto-${i}`;
+    if (players[id]) {
+      io.to('display').emit('player-left', id);
+      delete players[id];
+    }
+  }
+  autoplayActive = false;
+  console.log('[AUTOPLAY] Stopped');
 }
 
 // ── Coins ─────────────────────────────────────────────────────────────
@@ -151,14 +189,39 @@ io.on('connection', (socket) => {
   socket.on('admin-start', (pw) => {
     console.log(`[ADMIN] admin-start, pw match: ${pw === ADMIN_PASSWORD}`);
     if (pw !== ADMIN_PASSWORD) return;
+    // Regenerate obstacles based on current real player count
+    const humanCount = Object.values(players).filter(p => !p.isAutoplay).length;
+    obstacles = generateObstacles(obstacleCount(humanCount));
+    for (const botId in bots) {
+      const pos = spawnPosition(obstacles, players, bots, botId);
+      Object.assign(bots[botId], { x: pos.x, y: pos.y });
+    }
+    io.to('display').emit('obstacles-reset', obstacles);
     gameState = 'PLAYING';
     io.emit('gameStateChange', gameState);
+    console.log(`[ADMIN] Obstacles regenerated: count=${obstacles.length} for ${humanCount} players`);
   });
 
   socket.on('admin-stop', (pw) => {
     console.log(`[ADMIN] admin-stop, pw match: ${pw === ADMIN_PASSWORD}`);
     if (pw !== ADMIN_PASSWORD) return;
+    if (autoplayActive) stopAutoplay();
     gameState = 'STOPPED';
+    io.emit('gameStateChange', gameState);
+  });
+
+  socket.on('admin-autoplay', (pw) => {
+    console.log(`[ADMIN] admin-autoplay, pw match: ${pw === ADMIN_PASSWORD}`);
+    if (pw !== ADMIN_PASSWORD) return;
+    // Use minimum obstacles for max-player stress test
+    obstacles = generateObstacles(obstacleCount(AUTOPLAY_COUNT));
+    for (const botId in bots) {
+      const pos = spawnPosition(obstacles, players, bots, botId);
+      Object.assign(bots[botId], { x: pos.x, y: pos.y });
+    }
+    io.to('display').emit('obstacles-reset', obstacles);
+    startAutoplay();
+    gameState = 'PLAYING';
     io.emit('gameStateChange', gameState);
   });
 
@@ -283,6 +346,22 @@ setInterval(() => {
 
       if (a.lives <= 0) { a.alive = false; if (sockA) sockA.emit('eliminated'); io.to('display').emit('player-eliminated', a.id); }
       if (b.lives <= 0) { b.alive = false; if (sockB) sockB.emit('eliminated'); io.to('display').emit('player-eliminated', b.id); }
+    }
+  }
+
+  // ── Autoplay bot AI (random walk) ────────────────────────────────
+  if (autoplayActive) {
+    const dirs = [
+      [PLAYER_SPEED, 0], [-PLAYER_SPEED, 0],
+      [0, PLAYER_SPEED], [0, -PLAYER_SPEED],
+    ];
+    for (let i = 0; i < AUTOPLAY_COUNT; i++) {
+      const ap = players[`auto-${i}`];
+      if (!ap || !ap.alive) continue;
+      if (Math.random() < 0.04) {
+        const d = dirs[Math.floor(Math.random() * dirs.length)];
+        ap.vx = d[0]; ap.vy = d[1];
+      }
     }
   }
 

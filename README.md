@@ -88,6 +88,8 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 2. Players scan the QR code (or navigate to `/controller.html`).
 3. Admin opens `/admin.html`, enters password `demo123`, hits **Start Game**.
 4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — fires in all 4 directions at once (10 shots per spawn, refilled when you rejoin). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
+   - Obstacle count scales automatically with player count: fewer obstacles for large crowds, more for small groups (formula: `max(4, 20 − ⌊players/2⌋)`).
+   - **Autoplay mode** (admin "🤖 Autoplay (32)" button): spawns 32 random-walk bots as regular players — useful for stress-testing the server at max capacity.
 5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact! Shoot them to teleport them away.
 6. Last player standing wins — or highest score when admin stops the game.
 
@@ -117,6 +119,8 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Emoji players** — random people, animals, and vehicles (curated for projector visibility); your emoji + name shown large on your phone
 - **Robot bots** — 2 AI chasers (🤖👾) with red particle trails and a pulsing red square aura so they're instantly recognisable
 - **Shooting** — tap to fire in all 4 directions at once; 10 shots per spawn, refilled on rejoin
+- **Adaptive obstacles** — obstacle count scales inversely with player count (`max(4, 20 − ⌊n/2⌋)`); regenerated fresh each time the game starts
+- **Autoplay stress-test** — admin panel "🤖 Autoplay (32)" fills the arena with 32 random-walk fake players to verify server performance at capacity
 - **Food/drink coins** — count scales with players (1 coin per 2 alive players, min 1); always-pulsing glow, staggered per coin
 - **Spawn invulnerability** — 2s immunity on join and rejoin so you can't be killed immediately
 - **Terrain background** — lightweight tiled ground texture with faint emoji patches
