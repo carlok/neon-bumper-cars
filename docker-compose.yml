@@ -27,5 +27,19 @@ services:
     volumes:
       - ./server.js:/app/server.js
       - ./public:/app/public
+      - ./src:/app/src
     profiles:
       - dev
+
+  # ── Tests + coverage (no host deps, Podman safe) ──────────────────
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: neon-bumper-cars-test
+    command: ["npm", "run", "test:coverage"]
+    volumes:
+      - ./src:/app/src
+      - ./test:/app/test
+    profiles:
+      - test
