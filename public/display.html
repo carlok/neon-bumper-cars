@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>Neon Bumper Cars — Display</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
   * { margin:0; padding:0; }
   body { background:#111; overflow:hidden; }
@@ -11,13 +10,6 @@
 </style>
 </head>
 <body>
-<!-- Sidebar footer — HTML overlay so text is never blurry regardless of canvas scale -->
-<div id="sb-footer" style="position:fixed; right:0; bottom:1.1vh; width:16.667%; text-align:center; pointer-events:none; z-index:999; line-height:1.7;">
-  <div style="font-family:monospace; font-size:1.25vw; color:#ffffff;">⚡ Neon Bumper Cars</div>
-  <div style="font-family:monospace; font-size:1vw; color:#aaaaaa;"><i class="fa-brands fa-github" style="margin-right:0.3em;"></i>carlok/neon-bumper-cars</div>
-  <div style="font-family:monospace; font-size:0.9vw; color:#888888;">© 2026 carlok&nbsp;|&nbsp;v1.1.11</div>
-</div>
-
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -64,8 +56,8 @@ class GameScene extends Phaser.Scene {
     const SIDEBAR_W = 320; // right sidebar
     const SIDEBAR_X = GAME_W; // sidebar starts here
 
-    // ── Sidebar background ──────────────────────────────────────────
-    this.add.rectangle(SIDEBAR_X + SIDEBAR_W / 2, 540, SIDEBAR_W, 1080, 0x3b2d4a)
+    // ── Sidebar background — +2px width to guarantee no gap at canvas right edge
+    this.add.rectangle(SIDEBAR_X + SIDEBAR_W / 2 + 1, 540, SIDEBAR_W + 2, 1080, 0x3b2d4a)
       .setDepth(140);
     // Divider line
     this.add.rectangle(SIDEBAR_X, 540, 3, 1080, 0x6644aa).setDepth(141);
@@ -145,15 +137,15 @@ class GameScene extends Phaser.Scene {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.textures.addImage('qr', img);
-      this.qrSprite = this.add.image(lbCenterX, 930, 'qr')
-        .setDisplaySize(175, 175).setDepth(152).setAlpha(0.95);
+      this.qrSprite = this.add.image(lbCenterX, 700, 'qr')
+        .setDisplaySize(210, 210).setDepth(152).setAlpha(0.95);
       this.qrLoaded = true;
     };
     img.src = qrUrl;
 
     // "SCAN TO PLAY" text — sits above the QR with clear gap
-    this.add.text(lbCenterX, 818, '📱 SCAN TO PLAY', {
-      fontSize: '18px', fontFamily: 'monospace', color: '#ffdd44', align: 'center'
+    this.add.text(lbCenterX, 540, '📱 SCAN TO PLAY', {
+      fontSize: '20px', fontFamily: 'monospace', color: '#ffdd44', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
     // Waiting text (centered in game area)
@@ -169,8 +161,13 @@ class GameScene extends Phaser.Scene {
     pg.generateTexture('particle', 6, 6);
     pg.destroy();
 
-    // Footer text is rendered as an HTML overlay (id="sb-footer") — see top of <body>
-    // This avoids canvas scaling blurriness and enables Font Awesome icons.
+    // Footer: project name + copyright inside the Phaser canvas (large enough to stay sharp)
+    this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
+      fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
+    }).setOrigin(0.5).setDepth(152);
+    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.12', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
+    }).setOrigin(0.5).setDepth(152);
 
     this.obstaclesCreated = false;
   }
