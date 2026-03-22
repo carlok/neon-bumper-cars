@@ -67,6 +67,7 @@
     <div id="lives-display">♥♥♥</div>
   </div>
   <div id="direction-indicator">↑</div>
+  <div id="shots-display" style="font-size:20px; color:#ff9900; margin-top:8px; letter-spacing:2px;"></div>
   <button id="rejoin-btn" style="display:none; font-size:24px; font-weight:700; padding:20px 40px;
     border:3px solid #0ff; border-radius:16px; background:transparent; color:#0ff;
     cursor:pointer; text-transform:uppercase; letter-spacing:2px; margin-top:20px;
@@ -76,7 +77,9 @@
     color:#888; cursor:pointer;">✕ EXIT</button>
 </div>
 
-<div style="position:fixed; bottom:4px; right:6px; font-size:10px; color:rgba(255,255,255,0.25); pointer-events:none; z-index:999;">v1.1.0</div>
+<div style="position:fixed; bottom:8px; left:0; right:0; text-align:center; font-size:11px; color:rgba(255,255,255,0.4); pointer-events:none; z-index:999;">
+  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" style="color:rgba(255,255,255,0.4);">github</a> &nbsp;|&nbsp; v1.1.2
+</div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 // ── Audio Synthesizer ─────────────────────────────────────────────────
@@ -204,6 +207,7 @@ let myName = '';
 let myGameState = 'WAITING';
 let score = 0;
 let lives = 3;
+let shotsLeft = 10;
 let joined = false;
 
 const joinScreen = document.getElementById('join-screen');
@@ -214,6 +218,7 @@ const livesDisplay = document.getElementById('lives-display');
 const dirIndicator = document.getElementById('direction-indicator');
 const playerNameEl = document.getElementById('player-name');
 const rejoinBtn = document.getElementById('rejoin-btn');
+const shotsDisplay = document.getElementById('shots-display');
 const arrows = { up:'↑', down:'↓', left:'←', right:'→' };
 
 // ── Join ──────────────────────────────────────────────────────────────
@@ -257,6 +262,7 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       myName = data.name || myName;
       myGameState = data.gameState;
       if (data.score !== undefined) score = data.score;
+      if (data.shotsLeft !== undefined) shotsLeft = data.shotsLeft;
       lives = 3;
       updateUI();
     });
@@ -290,9 +296,11 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       vibe(VIBE.blocked);
     });
 
-    socket.on('shot-fired-ack', () => {
-      sfx.shoot();
-      vibe(VIBE.shoot);
+    socket.on('shot-fired-ack', (data) => {
+      if (data && data.shotsLeft !== undefined) {
+        shotsLeft = data.shotsLeft;
+        updateShotsDisplay();
+      }
     });
 
     socket.on('eliminated', () => {
@@ -339,6 +347,7 @@ function updateUI() {
     dirIndicator.style.display = 'flex';
     scoreDisplay.textContent = score;
     livesDisplay.textContent = '♥'.repeat(Math.max(0, lives));
+    updateShotsDisplay();
   } else if (myGameState === 'ELIMINATED') {
     document.body.style.background = '#222';
     statusText.textContent = 'ELIMINATED!';
@@ -361,6 +370,17 @@ function updateUI() {
   }
 }
 
+function updateShotsDisplay() {
+  if (!shotsDisplay) return;
+  if (shotsLeft <= 0) {
+    shotsDisplay.textContent = '🔴 NO SHOTS LEFT';
+    shotsDisplay.style.color = '#ff3366';
+  } else {
+    shotsDisplay.textContent = '💥 ' + shotsLeft + ' shots';
+    shotsDisplay.style.color = shotsLeft <= 3 ? '#ff6600' : '#ff9900';
+  }
+}
+
 // ── Rejoin after elimination ─────────────────────────────────────────
 rejoinBtn.addEventListener('click', () => {
   console.log('[REJOIN] Rejoin tapped');
@@ -371,6 +391,7 @@ rejoinBtn.addEventListener('click', () => {
   myGameState = 'PLAYING';
   score = 0;
   lives = 3;
+  shotsLeft = 10;
   rejoinBtn.style.display = 'none';
   updateUI();
 });
@@ -424,12 +445,16 @@ document.addEventListener('touchend', (e) => {
 
   // Tap (no significant movement) → shoot
   if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) {
-    console.log('[SHOOT] Tap detected, emitting shoot');
+    if (shotsLeft <= 0) {
+      vibe([30]);
+      return;
+    }
     socket.emit('shoot');
-    // Immediate feedback (server ack adds second confirmation)
+    shotsLeft = Math.max(0, shotsLeft - 1);
     sfx.shoot();
     vibe(VIBE.shoot);
     dirIndicator.textContent = '💥';
+    updateShotsDisplay();
     setTimeout(() => dirIndicator.textContent = arrows[lastDir] || '↑', 300);
     return;
   }

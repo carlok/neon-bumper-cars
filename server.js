@@ -22,8 +22,9 @@ const TICK_RATE = 60;
 const MAX_PLAYERS = 32;
 const BULLET_SPEED = 10;
 const BULLET_SIZE = 10;
-const BULLET_MAX_DIST = 600;  // max travel distance before disappearing
+const BULLET_MAX_DIST = 600;
 const SHOOT_COOLDOWN_MS = 800;
+const MAX_SHOTS = 10;  // shots per session
 
 // ── Neon palette ───────────────────────────────────────────────────────
 const NEON_COLORS = [
@@ -338,6 +339,7 @@ io.on('connection', (socket) => {
       alive: true,
       facing: 'up',
       lastShotAt: 0,
+      shotsLeft: MAX_SHOTS,
     };
     console.log(`[PLAYER] Player created: ${socket.id}, name=${name}, color=${color}, emoji=${emoji}`);
     socket.emit('player-info', { color, emoji, name, gameState });
@@ -358,8 +360,9 @@ io.on('connection', (socket) => {
     existing.lives = 3;
     existing.alive = true;
     existing.invulnUntil = Date.now() + INVULN_MS;
-    // Keep color, emoji, name — reset score
-    socket.emit('player-info', { color: existing.color, emoji: existing.emoji, name: existing.name, score: 0, gameState });
+    existing.shotsLeft = MAX_SHOTS;
+    // Keep color, emoji, name — reset score and shots
+    socket.emit('player-info', { color: existing.color, emoji: existing.emoji, name: existing.name, score: 0, shotsLeft: MAX_SHOTS, gameState });
     io.to('display').emit('player-joined', existing);
   });
 
@@ -397,27 +400,24 @@ io.on('connection', (socket) => {
       console.log(`[SHOOT] Rejected: id=${socket.id}, hasPlayer=${!!p}, alive=${p?.alive}, gameState=${gameState}`);
       return;
     }
-    const now = Date.now();
-    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) {
-      console.log(`[SHOOT] Cooldown: ${socket.id}, remaining=${SHOOT_COOLDOWN_MS - (now - p.lastShotAt)}ms`);
+    if (p.shotsLeft <= 0) {
+      socket.emit('shot-fired-ack', { shotsLeft: 0 });
       return;
     }
-    console.log(`[SHOOT] ${p.name} fired facing=${p.facing}`);
+    const now = Date.now();
+    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) return;
+    console.log(`[SHOOT] ${p.name} fired, shotsLeft=${p.shotsLeft - 1}`);
     p.lastShotAt = now;
-    const facingDirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-    const fd = facingDirs[p.facing] || [0, -1];
-    const bullet = {
-      x: p.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2,
-      y: p.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2,
-      vx: fd[0] * BULLET_SPEED,
-      vy: fd[1] * BULLET_SPEED,
-      ownerId: socket.id,
-      ownerColor: p.color,
-      dist: 0,
-    };
-    bullets.push(bullet);
-    io.to('display').emit('shot-fired', { x: bullet.x, y: bullet.y, color: p.color });
-    socket.emit('shot-fired-ack');
+    p.shotsLeft--;
+    // Fire 4 bullets — one in each direction
+    const allDirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    const cx = p.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+    const cy = p.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2;
+    for (const [dvx, dvy] of allDirs) {
+      bullets.push({ x: cx, y: cy, vx: dvx * BULLET_SPEED, vy: dvy * BULLET_SPEED, ownerId: socket.id, ownerColor: p.color, dist: 0 });
+    }
+    io.to('display').emit('shot-fired', { x: cx, y: cy, color: p.color });
+    socket.emit('shot-fired-ack', { shotsLeft: p.shotsLeft });
   });
 
   socket.on('disconnect', (reason) => {
