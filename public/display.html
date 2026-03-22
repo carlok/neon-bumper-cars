@@ -15,7 +15,7 @@
 <div id="sb-footer" style="position:fixed; right:0; bottom:1.1vh; width:16.667%; text-align:center; pointer-events:none; z-index:999; line-height:1.7;">
   <div style="font-family:monospace; font-size:1.25vw; color:#ffffff;">⚡ Neon Bumper Cars</div>
   <div style="font-family:monospace; font-size:1vw; color:#aaaaaa;"><i class="fa-brands fa-github" style="margin-right:0.3em;"></i>carlok/neon-bumper-cars</div>
-  <div style="font-family:monospace; font-size:0.9vw; color:#888888;">© 2026 carlok&nbsp;|&nbsp;v1.1.8</div>
+  <div style="font-family:monospace; font-size:0.9vw; color:#888888;">© 2026 carlok&nbsp;|&nbsp;v1.1.9</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
@@ -415,10 +415,17 @@ class GameScene extends Phaser.Scene {
   }
 }
 
+// Render buffer resolution: scale with devicePixelRatio (Retina) and viewport size (4K/2K).
+// Game coordinates stay at 1920×1080; internal buffer is RESOLUTION× larger → crisp emojis
+// at any display (HD=1, QHD/4K=2, 8K or Retina-4K capped at 3).
+const _scaleToFit = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+const RESOLUTION = Math.min(Math.ceil((window.devicePixelRatio || 1) * Math.max(1, _scaleToFit)), 3);
+
 const config = {
   type: Phaser.WEBGL,
   width: 1920,
   height: 1080,
+  resolution: RESOLUTION,
   backgroundColor: '#f5f0d0',
   scale: {
     mode: Phaser.Scale.FIT,
