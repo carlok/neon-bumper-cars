@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Bumper Cars — Display</title>
+<style>
+  * { margin:0; padding:0; }
+  body { background:#000; overflow:hidden; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+
+let gameState = 'WAITING';
+let serverPlayers = {};
+let serverCoin = null;
+let obstacles = [];
+
+socket.on('connect', () => socket.emit('join-display'));
+socket.on('init', (data) => {
+  obstacles = data.obstacles;
+  gameState = data.gameState;
+  serverCoin = data.coin;
+});
+socket.on('gameStateChange', (s) => { gameState = s; });
+socket.on('frame', (data) => {
+  serverPlayers = data.players;
+  serverCoin = data.coin;
+});
+socket.on('coin-spawned', (c) => { serverCoin = c; });
+
+// Events queued for Phaser scene
+const eventQueue = [];
+socket.on('coin-eaten', (d) => eventQueue.push({ type:'coin-eaten', ...d }));
+socket.on('bump', (d) => eventQueue.push({ type:'bump', ...d }));
+socket.on('player-eliminated', (id) => eventQueue.push({ type:'eliminated', id }));
+
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+
+  create() {
+    this.playerGfx = {};
+    this.trailEmitters = {};
+
+    // Obstacle text objects
+    this.obsTexts = [];
+    // Will be created once obstacles arrive
+
+    // Coin text (emoji updated dynamically from server)
+    this.coinText = this.add.text(0, 0, '🍎', { fontSize: '36px' }).setOrigin(0.5).setDepth(5);
+
+    // QR code
+    const origin = window.location.origin;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(origin + '/controller.html')}`;
+    // Use DOM image for QR since Phaser needs a loaded texture
+    this.qrLoaded = false;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      this.textures.addImage('qr', img);
+      this.qrSprite = this.add.image(140, 940, 'qr').setDisplaySize(200, 200).setDepth(100).setAlpha(0.85);
+      this.qrLoaded = true;
+    };
+    img.src = qrUrl;
+
+    // URL text under QR
+    this.urlText = this.add.text(140, 1050, origin + '/controller.html', {
+      fontSize: '13px', fontFamily: 'monospace', color: '#888'
+    }).setOrigin(0.5).setDepth(100);
+
+    // Waiting text
+    this.waitingText = this.add.text(960, 480, 'WAITING FOR HOST...', {
+      fontSize: '72px', fontFamily: 'monospace', color: '#0ff',
+      stroke: '#006', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(200).setAlpha(0);
+
+    // Leaderboard background
+    this.lbBg = this.add.rectangle(1920 - 140, 30, 260, 400, 0x000000, 0.6)
+      .setOrigin(0.5, 0).setDepth(150);
+    this.lbTitle = this.add.text(1920 - 140, 36, '🏆 LEADERBOARD', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#ff0', align: 'center'
+    }).setOrigin(0.5, 0).setDepth(151);
+    this.lbRows = [];
+    for (let i = 0; i < 10; i++) {
+      const t = this.add.text(1920 - 260, 68 + i * 32, '', {
+        fontSize: '15px', fontFamily: 'monospace', color: '#fff'
+      }).setDepth(151);
+      this.lbRows.push(t);
+    }
+
+    // Particle texture (small white square)
+    const pg = this.make.graphics({ add: false });
+    pg.fillStyle(0xffffff);
+    pg.fillRect(0, 0, 6, 6);
+    pg.generateTexture('particle', 6, 6);
+    pg.destroy();
+
+    this.obstaclesCreated = false;
+  }
+
+  update() {
+    // Create obstacles once
+    if (!this.obstaclesCreated && obstacles.length > 0) {
+      this.obstaclesCreated = true;
+      const emojiMap = { tree: '🌲', stone: '🪨', lake: '💧' };
+      for (const ob of obstacles) {
+        const emoji = emojiMap[ob.type] || '❓';
+        const t = this.add.text(ob.x + ob.w / 2, ob.y + ob.h / 2, emoji, {
+          fontSize: `${Math.min(ob.w, ob.h)}px`
+        }).setOrigin(0.5).setDepth(3);
+        this.obsTexts.push(t);
+      }
+    }
+
+    // Waiting overlay
+    if (gameState === 'WAITING') {
+      this.waitingText.setAlpha(0.7 + 0.3 * Math.sin(this.time.now / 400));
+    } else {
+      this.waitingText.setAlpha(0);
+    }
+
+    // Process event queue
+    while (eventQueue.length) {
+      const ev = eventQueue.shift();
+      if (ev.type === 'coin-eaten') this.doCoinBurst(ev.cx, ev.cy);
+      if (ev.type === 'bump') this.doBump(ev);
+      if (ev.type === 'eliminated') this.doEliminated(ev.id);
+    }
+
+    // Update / create player graphics
+    for (const id in serverPlayers) {
+      const sp = serverPlayers[id];
+      if (!sp.alive) {
+        if (this.playerGfx[id]) {
+          this.playerGfx[id].destroy();
+          delete this.playerGfx[id];
+        }
+        if (this.trailEmitters[id]) {
+          this.trailEmitters[id].stop();
+          delete this.trailEmitters[id];
+        }
+        continue;
+      }
+      if (!this.playerGfx[id]) {
+        const faceEmoji = sp.emoji || '😀';
+        const g = this.add.text(sp.x, sp.y, faceEmoji, { fontSize: '36px' })
+          .setOrigin(0.5).setDepth(10);
+        this.playerGfx[id] = g;
+
+        // Particle trail
+        const emitter = this.add.particles(0, 0, 'particle', {
+          speed: { min: 10, max: 30 },
+          scale: { start: 0.8, end: 0 },
+          alpha: { start: 0.6, end: 0 },
+          lifespan: 400,
+          frequency: 50,
+          blendMode: Phaser.BlendModes.ADD,
+          tint: Phaser.Display.Color.HexStringToColor(sp.color).color,
+        });
+        emitter.setDepth(9);
+        this.trailEmitters[id] = emitter;
+      }
+
+      const g = this.playerGfx[id];
+      g.setPosition(sp.x + 20, sp.y + 20);
+
+      // Blink when invulnerable
+      if (sp.invuln) {
+        g.setAlpha(Math.sin(this.time.now / 50) > 0 ? 1 : 0.2);
+      } else {
+        g.setAlpha(1);
+      }
+
+      // Trail follow
+      if (this.trailEmitters[id]) {
+        this.trailEmitters[id].setPosition(sp.x + 20, sp.y + 20);
+      }
+    }
+
+    // Remove disconnected
+    for (const id in this.playerGfx) {
+      if (!serverPlayers[id]) {
+        this.playerGfx[id].destroy();
+        delete this.playerGfx[id];
+        if (this.trailEmitters[id]) {
+          this.trailEmitters[id].stop();
+          delete this.trailEmitters[id];
+        }
+      }
+    }
+
+    // Coin
+    if (serverCoin) {
+      if (serverCoin.emoji) this.coinText.setText(serverCoin.emoji);
+      this.coinText.setPosition(serverCoin.x + 15, serverCoin.y + 15).setVisible(true);
+    } else {
+      this.coinText.setVisible(false);
+    }
+
+    // Leaderboard
+    const sorted = Object.values(serverPlayers)
+      .filter(p => p.alive)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+    for (let i = 0; i < 10; i++) {
+      if (i < sorted.length) {
+        const p = sorted[i];
+        const hearts = '♥'.repeat(p.lives);
+        this.lbRows[i].setText(`${i + 1}. ■ ${p.score}pts ${hearts}`);
+        this.lbRows[i].setColor(p.color);
+      } else {
+        this.lbRows[i].setText('');
+      }
+    }
+  }
+
+  doCoinBurst(cx, cy) {
+    const burst = this.add.particles(cx, cy, 'particle', {
+      speed: { min: 80, max: 200 },
+      scale: { start: 1.2, end: 0 },
+      lifespan: 500,
+      quantity: 20,
+      tint: 0xffff00,
+      blendMode: Phaser.BlendModes.ADD,
+      emitting: false,
+    });
+    burst.setDepth(50);
+    burst.explode(20);
+    this.time.delayedCall(600, () => burst.destroy());
+  }
+
+  doBump(ev) {
+    this.cameras.main.shake(200, 0.01);
+    // Explosion at midpoint
+    const mx = (ev.ax + ev.bx) / 2;
+    const my = (ev.ay + ev.by) / 2;
+    const burst = this.add.particles(mx, my, 'particle', {
+      speed: { min: 100, max: 300 },
+      scale: { start: 1.5, end: 0 },
+      lifespan: 400,
+      quantity: 30,
+      tint: [0xff3366, 0xff6600, 0xffff00],
+      blendMode: Phaser.BlendModes.ADD,
+      emitting: false,
+    });
+    burst.setDepth(50);
+    burst.explode(30);
+    this.time.delayedCall(500, () => burst.destroy());
+  }
+
+  doEliminated(id) {
+    const g = this.playerGfx[id];
+    if (g) {
+      const burst = this.add.particles(g.x, g.y, 'particle', {
+        speed: { min: 50, max: 250 },
+        scale: { start: 2, end: 0 },
+        lifespan: 800,
+        quantity: 40,
+        tint: 0xff0000,
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      });
+      burst.setDepth(50);
+      burst.explode(40);
+      this.time.delayedCall(900, () => burst.destroy());
+    }
+  }
+}
+
+const config = {
+  type: Phaser.WEBGL,
+  width: 1920,
+  height: 1080,
+  backgroundColor: '#000000',
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  scene: GameScene,
+};
+
+new Phaser.Game(config);
+</script>
+</body>
+</html>

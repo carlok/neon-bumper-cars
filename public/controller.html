@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Controller — Neon Bumper Cars</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; }
+  html, body { width:100%; height:100%; overflow:hidden; touch-action:none; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    transition: background .4s;
+  }
+  #join-screen {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    width:100%; height:100%; position:absolute; top:0; left:0; z-index:100;
+    background:#111;
+  }
+  #join-btn {
+    font-size:28px; font-weight:700; padding:24px 48px;
+    border:3px solid #0ff; border-radius:16px;
+    background:transparent; color:#0ff; cursor:pointer;
+    text-transform:uppercase; letter-spacing:3px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { transform:scale(1); opacity:1; }
+    50% { transform:scale(1.05); opacity:.8; }
+  }
+  #game-ui {
+    display:none; flex-direction:column; align-items:center; justify-content:center;
+    width:100%; height:100%; gap:16px; position:relative;
+  }
+  #status-text {
+    font-size:32px; font-weight:700; color:#fff; text-align:center;
+    text-shadow: 0 0 20px currentColor;
+  }
+  #stats {
+    font-size:24px; color:#fff; text-align:center;
+  }
+  #score-display { font-size:48px; font-weight:700; }
+  #lives-display { font-size:36px; color:#ff3366; margin-top:4px; }
+  #direction-indicator {
+    width:80px; height:80px; border:2px solid rgba(255,255,255,0.3);
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:36px; color:rgba(255,255,255,0.5); margin-top:12px;
+  }
+  .flash { animation: flashAnim .15s; }
+  @keyframes flashAnim {
+    0% { filter:brightness(3); }
+    100% { filter:brightness(1); }
+  }
+</style>
+</head>
+<body>
+
+<div id="join-screen">
+  <button id="join-btn">⚡ TAP TO JOIN ⚡</button>
+</div>
+
+<div id="game-ui">
+  <div id="status-text">CONNECTING…</div>
+  <div id="stats">
+    <div id="score-display">0</div>
+    <div id="lives-display">♥♥♥</div>
+  </div>
+  <div id="direction-indicator">↑</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Audio Synthesizer ─────────────────────────────────────────────────
+class SFX {
+  constructor() {
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
+
+  _play(freq, type, duration, vol = 0.3) {
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(); osc.stop(this.ctx.currentTime + duration);
+  }
+
+  swipe() {
+    this._play(880, 'square', 0.08, 0.15);
+  }
+
+  coin() {
+    const t = this.ctx.currentTime;
+    const notes = [660, 880, 1100, 1320];
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(f, t + i * 0.06);
+      gain.gain.setValueAtTime(0.2, t + i * 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.12);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(t + i * 0.06);
+      osc.stop(t + i * 0.06 + 0.12);
+    });
+  }
+
+  collision() {
+    this._play(80, 'sawtooth', 0.3, 0.4);
+    this._play(60, 'square', 0.25, 0.3);
+  }
+
+  death() {
+    const t = this.ctx.currentTime;
+    const notes = [440, 370, 311, 261, 220];
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, t + i * 0.15);
+      gain.gain.setValueAtTime(0.25, t + i * 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.15 + 0.2);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(t + i * 0.15);
+      osc.stop(t + i * 0.15 + 0.2);
+    });
+  }
+
+  blocked() {
+    this._play(110, 'sawtooth', 0.15, 0.25);
+  }
+}
+
+// ── State ─────────────────────────────────────────────────────────────
+let sfx, socket;
+let myColor = '#0ff';
+let myGameState = 'WAITING';
+let score = 0;
+let lives = 3;
+let joined = false;
+
+const joinScreen = document.getElementById('join-screen');
+const gameUI = document.getElementById('game-ui');
+const statusText = document.getElementById('status-text');
+const scoreDisplay = document.getElementById('score-display');
+const livesDisplay = document.getElementById('lives-display');
+const dirIndicator = document.getElementById('direction-indicator');
+const arrows = { up:'↑', down:'↓', left:'←', right:'→' };
+
+// ── Join ──────────────────────────────────────────────────────────────
+document.getElementById('join-btn').addEventListener('click', (e) => {
+  console.log('[JOIN] TAP TO JOIN clicked', { joined, timestamp: Date.now() });
+
+  if (joined) {
+    console.warn('[JOIN] Already joined, ignoring duplicate tap');
+    return;
+  }
+
+  try {
+    sfx = new SFX();
+    sfx.resume();
+    console.log('[JOIN] AudioContext created, state:', sfx.ctx.state);
+  } catch (err) {
+    console.error('[JOIN] AudioContext error:', err);
+  }
+
+  try {
+    socket = io();
+    console.log('[JOIN] Socket.IO instance created');
+
+    socket.on('connect', () => {
+      console.log('[JOIN] Socket connected, id:', socket.id);
+      console.log('[JOIN] Emitting join-player');
+      socket.emit('join-player');
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('[JOIN] Socket connect_error:', err.message);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('[JOIN] Socket disconnected:', reason);
+    });
+
+    socket.on('player-info', (data) => {
+      console.log('[JOIN] player-info received:', data);
+      myColor = data.color;
+      myGameState = data.gameState;
+      updateUI();
+    });
+
+    socket.on('gameStateChange', (s) => {
+      console.log('[STATE] gameStateChange:', s);
+      myGameState = s;
+      updateUI();
+    });
+
+    socket.on('score', (s) => {
+      score = s;
+      scoreDisplay.textContent = score;
+      sfx.coin();
+      flash();
+    });
+
+    socket.on('collision', (data) => {
+      lives = data.lives;
+      livesDisplay.textContent = '♥'.repeat(Math.max(0, lives));
+      sfx.collision();
+      if (navigator.vibrate) navigator.vibrate(200);
+      flash();
+    });
+
+    socket.on('blocked', () => {
+      sfx.blocked();
+      if (navigator.vibrate) navigator.vibrate(50);
+    });
+
+    socket.on('eliminated', () => {
+      myGameState = 'ELIMINATED';
+      sfx.death();
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
+      updateUI();
+    });
+  } catch (err) {
+    console.error('[JOIN] Socket setup error:', err);
+    return;
+  }
+
+  joinScreen.style.display = 'none';
+  gameUI.style.display = 'flex';
+  joined = true;
+  console.log('[JOIN] UI switched to game view');
+  updateUI();
+});
+
+function updateUI() {
+  if (myGameState === 'WAITING') {
+    document.body.style.background = myColor;
+    statusText.textContent = 'WAITING FOR HOST…';
+    statusText.style.color = '#000';
+    scoreDisplay.style.display = 'none';
+    livesDisplay.style.display = 'none';
+    dirIndicator.style.display = 'none';
+  } else if (myGameState === 'PLAYING') {
+    document.body.style.background = '#111';
+    statusText.textContent = 'SWIPE TO MOVE';
+    statusText.style.color = myColor;
+    scoreDisplay.style.display = 'block';
+    livesDisplay.style.display = 'block';
+    dirIndicator.style.display = 'flex';
+    scoreDisplay.textContent = score;
+    livesDisplay.textContent = '♥'.repeat(Math.max(0, lives));
+  } else if (myGameState === 'ELIMINATED') {
+    document.body.style.background = '#222';
+    statusText.textContent = 'ELIMINATED!\nLOOK AT THE SCREEN';
+    statusText.style.color = '#ff3366';
+    scoreDisplay.style.display = 'block';
+    livesDisplay.style.display = 'none';
+    dirIndicator.style.display = 'none';
+  } else if (myGameState === 'STOPPED') {
+    document.body.style.background = '#111';
+    statusText.textContent = 'GAME OVER';
+    statusText.style.color = '#888';
+  }
+}
+
+function flash() {
+  document.body.classList.add('flash');
+  setTimeout(() => document.body.classList.remove('flash'), 150);
+}
+
+// ── Swipe Detection ───────────────────────────────────────────────────
+let touchStartX = 0, touchStartY = 0;
+
+document.addEventListener('touchstart', (e) => {
+  // Don't block touch on join button — this was preventing "tap to join" on some devices
+  if (!joined) {
+    console.log('[TOUCH] touchstart before join, allowing default for button tap');
+    return;
+  }
+  e.preventDefault();
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, { passive: false });
+
+document.addEventListener('touchmove', (e) => {
+  if (!joined) return;
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (!joined || myGameState !== 'PLAYING' || !socket) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  const minSwipe = 20;
+  if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) return;
+
+  let dir;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    dir = dx > 0 ? 'right' : 'left';
+  } else {
+    dir = dy > 0 ? 'down' : 'up';
+  }
+  socket.emit('swipe', dir);
+  sfx.swipe();
+  dirIndicator.textContent = arrows[dir];
+}, { passive: false });
+
+// Block all default touch behaviors
+document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend', e => e.preventDefault(), { passive: false });
+</script>
+</body>
+</html>
