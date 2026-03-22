@@ -48,10 +48,18 @@ const BOT_COUNT = 2;
 const BOT_SPEED = 3;  // slightly slower than players
 const BOT_INVULN_MS = 3000;
 
-// ── Coin emoji pool (vegan food & drinks) ────────────────────────────
+// ── Coin emoji pool (vegan or could-be-vegan food & drinks) ─────────
 const COIN_EMOJIS = [
-  '🍎', '🍌', '🍇', '🍓', '🍑', '🥑', '🥕', '🌽', '🍕', '🥤',
-  '🧃', '🍵', '☕', '🥥', '🍉', '🥦', '🍋', '🧋', '🍹', '🫐'
+  // Fruits
+  '🍎', '🍌', '🍇', '🍓', '🍑', '🍉', '🍋', '🫐', '🍒', '🥭', '🍍', '🥝',
+  // Vegetables
+  '🥑', '🥕', '🌽', '🥦', '🥬', '🫑', '🥒', '🍆',
+  // Could-be-vegan meals (hamburger, pizza, taco, burrito, fries, etc.)
+  '🍕', '🍔', '🌮', '🌯', '🍟', '🥙', '🥗', '🍜', '🍝', '🥘',
+  // Snacks & sweets
+  '🍩', '🍪', '🎂', '🍫', '🍿', '🥜', '🥨',
+  // Drinks
+  '🥤', '🧃', '🍵', '☕', '🧋', '🍹', '🥥', '🍺', '🥂', '🧉'
 ];
 
 // ── State ──────────────────────────────────────────────────────────────
