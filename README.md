@@ -117,7 +117,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Emoji players** — random people, animals, and vehicles (curated for projector visibility); your emoji + name shown large on your phone
 - **Robot bots** — 2 AI chasers (🤖👾) with red particle trails that hunt players
 - **Shooting** — tap to fire in all 4 directions at once; 10 shots per spawn, refilled on rejoin
-- **Food/drink coins** — vegan food and drinks as collectibles; always-pulsing glow for visibility
+- **Food/drink coins** — count scales with players (1 coin per 2 alive players, min 1); always-pulsing glow, staggered per coin
 - **Spawn invulnerability** — 2s immunity on join and rejoin so you can't be killed immediately
 - **Terrain background** — lightweight tiled ground texture with faint emoji patches
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated

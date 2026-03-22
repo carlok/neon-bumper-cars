@@ -27,7 +27,7 @@ let gameState  = 'WAITING'; // WAITING | PLAYING | STOPPED
 const players  = {};        // socketId → player
 const bots     = {};        // botId    → bot
 let obstacles  = [];        // { x, y, w, h, type }
-let coin       = null;      // { x, y, emoji }
+const coins    = [];        // [{ x, y, emoji }, ...]  — count scales with player count
 const bullets  = [];        // { x, y, vx, vy, ownerId, ownerColor, dist }
 let colorIndex = 0;
 
@@ -50,17 +50,28 @@ function randomName() {
   return `${adj} ${noun}`;
 }
 
-// ── Coin ──────────────────────────────────────────────────────────────
-function spawnCoin() {
+// ── Coins ─────────────────────────────────────────────────────────────
+// Target: 1 coin for every 2 alive players (min 1).
+function coinTarget() {
+  const alive = Object.values(players).filter(p => p.alive).length;
+  return Math.max(1, Math.ceil(alive / 2));
+}
+function makeCoin() {
   for (let i = 0; i < 200; i++) {
     const x = 80 + Math.random() * (ARENA_W - 160);
     const y = 80 + Math.random() * (ARENA_H - 160);
     if (!obstacles.some(ob => aabbOverlap(x, y, COIN_SIZE, COIN_SIZE, ob.x, ob.y, ob.w, ob.h))) {
-      coin = { x, y, emoji: randomCoinEmoji() };
-      return;
+      return { x, y, emoji: randomCoinEmoji() };
     }
   }
-  coin = { x: ARENA_W / 2, y: ARENA_H / 2, emoji: randomCoinEmoji() };
+  return { x: ARENA_W / 2, y: ARENA_H / 2, emoji: randomCoinEmoji() };
+}
+function maintainCoins() {
+  while (coins.length < coinTarget()) {
+    const c = makeCoin();
+    coins.push(c);
+    io.to('display').emit('coin-spawned', c);
+  }
 }
 
 // ── Bots ──────────────────────────────────────────────────────────────
@@ -81,7 +92,7 @@ function spawnBots() {
 
 // ── Init ──────────────────────────────────────────────────────────────
 obstacles = generateObstacles();
-spawnCoin();
+maintainCoins();
 spawnBots();
 
 // ── Socket.IO ─────────────────────────────────────────────────────────
@@ -91,7 +102,7 @@ io.on('connection', (socket) => {
   socket.on('join-display', () => {
     console.log(`[DISPLAY] Display joined: ${socket.id}`);
     socket.join('display');
-    socket.emit('init', { obstacles, gameState, coin, bots });
+    socket.emit('init', { obstacles, gameState, coins, bots });
   });
 
   socket.on('join-admin', () => {
@@ -228,13 +239,17 @@ setInterval(() => {
     }
 
     // Coin pickup
-    if (coin && aabbOverlap(p.x, p.y, PLAYER_SIZE, PLAYER_SIZE, coin.x, coin.y, COIN_SIZE, COIN_SIZE)) {
-      p.score += 10;
-      const sock = io.sockets.sockets.get(id);
-      if (sock) sock.emit('score', p.score);
-      io.to('display').emit('coin-eaten', { playerId: id, cx: coin.x, cy: coin.y });
-      spawnCoin();
-      io.to('display').emit('coin-spawned', coin);
+    for (let ci = coins.length - 1; ci >= 0; ci--) {
+      const c = coins[ci];
+      if (aabbOverlap(p.x, p.y, PLAYER_SIZE, PLAYER_SIZE, c.x, c.y, COIN_SIZE, COIN_SIZE)) {
+        p.score += 10;
+        const sock = io.sockets.sockets.get(id);
+        if (sock) sock.emit('score', p.score);
+        io.to('display').emit('coin-eaten', { playerId: id, cx: c.x, cy: c.y });
+        coins.splice(ci, 1);
+        maintainCoins();
+        break; // one coin per tick per player
+      }
     }
 
     alivePlayers.push(p);
@@ -392,7 +407,7 @@ setInterval(() => {
     const bot = bots[botId];
     frame[botId] = { x: bot.x, y: bot.y, color: bot.color, emoji: bot.emoji, score: 0, lives: 99, alive: bot.alive, invuln: false, isBot: true };
   }
-  io.to('display').emit('frame', { players: frame, coin, bullets });
+  io.to('display').emit('frame', { players: frame, coins, bullets });
 
 }, 1000 / TICK_RATE);
 

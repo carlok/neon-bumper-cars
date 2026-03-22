@@ -15,7 +15,7 @@
 <div id="sb-footer" style="position:fixed; right:0; bottom:1.1vh; width:16.667%; text-align:center; pointer-events:none; z-index:999; line-height:1.7;">
   <div style="font-family:monospace; font-size:1.25vw; color:#ffffff;">⚡ Neon Bumper Cars</div>
   <div style="font-family:monospace; font-size:1vw; color:#aaaaaa;"><i class="fa-brands fa-github" style="margin-right:0.3em;"></i>carlok/neon-bumper-cars</div>
-  <div style="font-family:monospace; font-size:0.9vw; color:#888888;">© 2026 carlok&nbsp;|&nbsp;v1.1.10</div>
+  <div style="font-family:monospace; font-size:0.9vw; color:#888888;">© 2026 carlok&nbsp;|&nbsp;v1.1.11</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
@@ -25,23 +25,23 @@ const socket = io();
 
 let gameState = 'WAITING';
 let serverPlayers = {};
-let serverCoin = null;
+let serverCoins = [];
 let obstacles = [];
 
 socket.on('connect', () => socket.emit('join-display'));
 socket.on('init', (data) => {
   obstacles = data.obstacles;
   gameState = data.gameState;
-  serverCoin = data.coin;
+  serverCoins = data.coins || [];
 });
 socket.on('gameStateChange', (s) => { gameState = s; });
 let serverBullets = [];
 socket.on('frame', (data) => {
   serverPlayers = data.players;
-  serverCoin = data.coin;
+  serverCoins = data.coins || [];
   serverBullets = data.bullets || [];
 });
-socket.on('coin-spawned', (c) => { serverCoin = c; });
+socket.on('coin-spawned', (c) => { serverCoins.push(c); });
 
 // Events queued for Phaser scene
 const eventQueue = [];
@@ -105,8 +105,13 @@ class GameScene extends Phaser.Scene {
     // Obstacle text objects
     this.obsTexts = [];
 
-    // Coin text (emoji updated dynamically from server)
-    this.coinText = this.add.text(0, 0, '🍎', { fontSize: '36px' }).setOrigin(0.5).setDepth(5);
+    // Coin text objects — pre-allocate 5 slots (max coins visible at once)
+    this.coinTexts = [];
+    for (let i = 0; i < 5; i++) {
+      this.coinTexts.push(
+        this.add.text(0, 0, '🍎', { fontSize: '36px' }).setOrigin(0.5).setDepth(5).setVisible(false)
+      );
+    }
 
     // ── Sidebar: Leaderboard ────────────────────────────────────────
     const lbCenterX = SIDEBAR_X + SIDEBAR_W / 2;
@@ -277,13 +282,16 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Coin — permanent gentle pulse so it is always easy to spot
-    if (serverCoin) {
-      if (serverCoin.emoji) this.coinText.setText(serverCoin.emoji);
-      this.coinText.setPosition(serverCoin.x + 15, serverCoin.y + 15).setVisible(true);
-      this.coinText.setScale(1.0 + 0.28 * Math.sin(this.time.now / 220));
-    } else {
-      this.coinText.setVisible(false);
+    // Coins — permanent gentle pulse, staggered phase per slot
+    for (let i = 0; i < this.coinTexts.length; i++) {
+      if (i < serverCoins.length) {
+        const c = serverCoins[i];
+        if (c.emoji) this.coinTexts[i].setText(c.emoji);
+        this.coinTexts[i].setPosition(c.x + 15, c.y + 15).setVisible(true);
+        this.coinTexts[i].setScale(1.0 + 0.28 * Math.sin(this.time.now / 220 + i * 1.3));
+      } else {
+        this.coinTexts[i].setVisible(false);
+      }
     }
 
     // ── Bullets ──────────────────────────────────────────────────────
