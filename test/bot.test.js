@@ -138,4 +138,31 @@ describe('updateBotAI', () => {
     updateBotAI(bot, 0, players, []);
     expect(bot.vx).toBe(BOT_SPEED); // chases right toward 'close'
   });
+
+  test('dist < nearestDist false branch: skips farther player when nearer already found', () => {
+    // close is inserted first → becomes nearest (dist=50); far (dist=400) hits the false branch
+    const bot = { x: 400, y: 400, vx: 0, vy: 0, retargetAt: 0 };
+    const players = {
+      close: { x: 450, y: 400, alive: true }, // dist=50  ← already nearest when far is evaluated
+      far:   { x: 800, y: 400, alive: true }, // dist=400 → dist < nearestDist is FALSE
+    };
+    updateBotAI(bot, 0, players, []);
+    expect(bot.vx).toBe(BOT_SPEED); // still chases close
+  });
+
+  test('horizontal-first with dy > 0 covers dy>0 ternary branches on secondary dirs', () => {
+    // abs(dx)=400 > abs(dy)=10 → horizontal-first; dy=10>0 exercises dy>0 branches on lines 51-52
+    const bot = { x: 100, y: 100, vx: 0, vy: 0, retargetAt: 0 };
+    const players = { p1: { x: 500, y: 110, alive: true } }; // dx=400, dy=10
+    updateBotAI(bot, 0, players, []);
+    expect(bot.vx).toBe(BOT_SPEED); // primary: chase right
+  });
+
+  test('vertical-first with dx > 0 covers dx>0 ternary branches on secondary dirs', () => {
+    // abs(dy)=500 > abs(dx)=50 → vertical-first; dx=50>0 exercises dx>0 branches on lines 57-58
+    const bot = { x: 300, y: 100, vx: 0, vy: 0, retargetAt: 0 };
+    const players = { p1: { x: 350, y: 600, alive: true } }; // dx=50, dy=500
+    updateBotAI(bot, 0, players, []);
+    expect(bot.vy).toBe(BOT_SPEED); // primary: chase down
+  });
 });

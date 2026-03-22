@@ -122,6 +122,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Terrain background** — lightweight tiled ground texture with faint emoji patches
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
+- **Adaptive render resolution** — display canvas scales to native pixels on HD, 2K, 4K, and Retina displays; emojis stay sharp at any screen size
 - **Wrap-around arena** (1920×1080) — exit one side, appear on the other
 - **Leaderboard** — live rank, score, lives, and remaining shots for each player
 - **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)

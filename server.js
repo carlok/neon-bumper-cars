@@ -36,7 +36,10 @@ function nextColor() {
   return NEON_COLORS[(colorIndex++) % NEON_COLORS.length];
 }
 function nextFaceEmoji() {
-  return PLAYER_EMOJIS[Math.floor(Math.random() * PLAYER_EMOJIS.length)];
+  const used = new Set(Object.values(players).map(p => p.emoji));
+  const pool = PLAYER_EMOJIS.filter(e => !used.has(e));
+  const source = pool.length > 0 ? pool : PLAYER_EMOJIS;
+  return source[Math.floor(Math.random() * source.length)];
 }
 function randomCoinEmoji() {
   return COIN_EMOJIS[Math.floor(Math.random() * COIN_EMOJIS.length)];
