@@ -219,6 +219,7 @@ function spawnBots() {
       invulnUntil: 0,
       alive: true,
       retargetAt: 0,  // when to pick a new direction
+      stuckSince: 0,  // timestamp when bot got stuck (0 = not stuck)
     };
     console.log(`[BOT] Spawned bot ${id} at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) emoji=${bots[id].emoji}`);
   }
@@ -571,6 +572,21 @@ setInterval(() => {
     } else {
       bot.x = bnx;
       bot.y = bny;
+    }
+
+    // Stuck detection: if bot hasn't moved for 2 seconds, respawn it
+    if (bot.vx === 0 && bot.vy === 0) {
+      if (bot.stuckSince === 0) bot.stuckSince = now;
+      else if (now - bot.stuckSince > 2000) {
+        const newPos = spawnPlayer(botId);
+        bot.x = newPos.x;
+        bot.y = newPos.y;
+        bot.stuckSince = 0;
+        bot.retargetAt = 0;
+        console.log(`[BOT] ${botId} was stuck, respawned at (${newPos.x.toFixed(0)}, ${newPos.y.toFixed(0)})`);
+      }
+    } else {
+      bot.stuckSince = 0;
     }
 
     // Bot-player collision: bot chases and damages players
