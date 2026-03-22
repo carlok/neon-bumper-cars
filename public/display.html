@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Neon Bumper Cars — Display</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
   * { margin:0; padding:0; }
   body { background:#111; overflow:hidden; }
@@ -10,6 +11,13 @@
 </style>
 </head>
 <body>
+<!-- Sidebar footer — HTML overlay so text is never blurry regardless of canvas scale -->
+<div id="sb-footer" style="position:fixed; right:0; bottom:1.1vh; width:16.667%; text-align:center; pointer-events:none; z-index:999; line-height:1.7;">
+  <div style="font-family:monospace; font-size:1.25vw; color:#ffffff;">⚡ Neon Bumper Cars</div>
+  <div style="font-family:monospace; font-size:1vw; color:#aaaaaa;"><i class="fa-brands fa-github" style="margin-right:0.3em;"></i>carlok/neon-bumper-cars</div>
+  <div style="font-family:monospace; font-size:0.9vw; color:#888888;">© 2026 carlok&nbsp;|&nbsp;v1.1.8</div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -156,16 +164,8 @@ class GameScene extends Phaser.Scene {
     pg.generateTexture('particle', 6, 6);
     pg.destroy();
 
-    // Project name + GitHub + copyright + version (under QR in sidebar)
-    this.add.text(lbCenterX, 1030, '⚡ Neon Bumper Cars', {
-      fontSize: '15px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
-    }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 1050, '🐙 carlok/neon-bumper-cars', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
-    }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 1068, '© 2026 carlok  |  v1.1.7', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#888888', align: 'center'
-    }).setOrigin(0.5).setDepth(152);
+    // Footer text is rendered as an HTML overlay (id="sb-footer") — see top of <body>
+    // This avoids canvas scaling blurriness and enables Font Awesome icons.
 
     this.obstaclesCreated = false;
   }
@@ -419,7 +419,7 @@ const config = {
   type: Phaser.WEBGL,
   width: 1920,
   height: 1080,
-  backgroundColor: '#111111',
+  backgroundColor: '#f5f0d0',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
