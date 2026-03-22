@@ -19,6 +19,7 @@ const COIN_SIZE = 30;
 const INVULN_MS = 2000;
 const ADMIN_PASSWORD = 'demo123';
 const TICK_RATE = 60;
+const MAX_PLAYERS = 32;
 
 // ── Neon palette ───────────────────────────────────────────────────────
 const NEON_COLORS = [
@@ -278,6 +279,12 @@ io.on('connection', (socket) => {
 
   socket.on('join-player', () => {
     console.log(`[PLAYER] join-player received from: ${socket.id}`);
+    const playerCount = Object.keys(players).length;
+    if (playerCount >= MAX_PLAYERS) {
+      console.log(`[PLAYER] Room full (${playerCount}/${MAX_PLAYERS}), rejecting ${socket.id}`);
+      socket.emit('room-full');
+      return;
+    }
     const pos = spawnPlayer();
     const color = nextColor();
     const emoji = nextFaceEmoji();
@@ -335,33 +342,15 @@ io.on('connection', (socket) => {
     io.emit('gameStateChange', gameState);
   });
 
-  // Player input
+  // Player input — always accept direction, game loop handles bouncing
   socket.on('swipe', (dir) => {
     const p = players[socket.id];
     if (!p || !p.alive || gameState !== 'PLAYING') return;
     const dirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
     const d = dirs[dir];
     if (!d) return;
-
-    const nextVx = d[0] * PLAYER_SPEED;
-    const nextVy = d[1] * PLAYER_SPEED;
-
-    // Check if direction is blocked by obstacle
-    const testX = p.x + nextVx;
-    const testY = p.y + nextVy;
-    let blocked = false;
-    for (const ob of obstacles) {
-      if (aabbOverlap(testX, testY, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
-        blocked = true;
-        break;
-      }
-    }
-    if (blocked) {
-      socket.emit('blocked');
-      return;
-    }
-    p.vx = nextVx;
-    p.vy = nextVy;
+    p.vx = d[0] * PLAYER_SPEED;
+    p.vy = d[1] * PLAYER_SPEED;
   });
 
   socket.on('disconnect', (reason) => {
@@ -393,7 +382,7 @@ setInterval(() => {
     if (ny < -PLAYER_SIZE) ny = ARENA_H;
     if (ny > ARENA_H) ny = -PLAYER_SIZE;
 
-    // Obstacle collision
+    // Obstacle collision: bounce off (reverse velocity)
     let hitObs = false;
     for (const ob of obstacles) {
       if (aabbOverlap(nx, ny, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
@@ -402,8 +391,8 @@ setInterval(() => {
       }
     }
     if (hitObs) {
-      p.vx = 0;
-      p.vy = 0;
+      p.vx = -p.vx;
+      p.vy = -p.vy;
       const sock = io.sockets.sockets.get(id);
       if (sock) sock.emit('blocked');
     } else {
@@ -492,8 +481,8 @@ setInterval(() => {
       }
     }
     if (botHitObs) {
-      bot.vx = 0;
-      bot.vy = 0;
+      bot.vx = -bot.vx;
+      bot.vy = -bot.vy;
       bot.retargetAt = 0; // force retarget next tick
     } else {
       bot.x = bnx;

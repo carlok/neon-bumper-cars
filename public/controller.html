@@ -286,6 +286,12 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       vibe(VIBE.eliminated);
       updateUI();
     });
+
+    socket.on('room-full', () => {
+      console.log('[JOIN] Room is full');
+      myGameState = 'FULL';
+      updateUI();
+    });
   } catch (err) {
     console.error('[JOIN] Socket setup error:', err);
     return;
@@ -330,6 +336,13 @@ function updateUI() {
     document.body.style.background = '#111';
     statusText.textContent = 'GAME OVER';
     statusText.style.color = '#888';
+  } else if (myGameState === 'FULL') {
+    document.body.style.background = '#111';
+    statusText.textContent = 'ROOM FULL — WAIT';
+    statusText.style.color = '#ff6600';
+    scoreDisplay.style.display = 'none';
+    livesDisplay.style.display = 'none';
+    dirIndicator.style.display = 'none';
   }
 }
 
