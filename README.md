@@ -26,35 +26,19 @@ Multiplayer WebSocket party game for live events. One shared display (projector/
 
 ## Development (live-reload, no rebuilds)
 
-Edit `server.js` or anything in `public/` and changes are picked up instantly — source files are mounted as volumes, nodemon restarts the server automatically.
+Source files are mounted as volumes into the container — edit `server.js` or anything in `public/`, nodemon restarts automatically. Nothing is installed on the host.
 
 ```bash
 # First time only: build the dev image
-docker compose --profile dev build
+podman compose --profile dev build
 
 # Start dev server (live-reload)
-docker compose --profile dev up dev
+podman compose --profile dev up dev
 
 # That's it — edit files, save, browser auto-reconnects
 ```
 
-Or without Docker:
-
-```bash
-npm install
-npm run dev
-```
-
 ## Production
-
-### Docker Compose
-
-```bash
-docker compose up -d neon-bumper-cars
-docker compose logs -f neon-bumper-cars
-```
-
-### Podman
 
 ```bash
 # Build
@@ -116,6 +100,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
 - **Wrap-around arena** (1920×1080) — exit one side, appear on the other
+- **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)
 - **Debug logging** — server and controller log join flow for troubleshooting
 
 ## License
