@@ -126,11 +126,6 @@ class GameScene extends Phaser.Scene {
       fontSize: '16px', fontFamily: 'monospace', color: '#aaa', align: 'center'
     }).setOrigin(0.5, 0).setDepth(152);
 
-    // URL text under QR
-    this.urlText = this.add.text(lbCenterX, 620, origin + '/controller.html', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#777', wordWrap: { width: SIDEBAR_W - 20 }
-    }).setOrigin(0.5, 0).setDepth(152);
-
     // Waiting text (centered in game area)
     this.waitingText = this.add.text(GAME_W / 2, 480, 'WAITING FOR HOST...', {
       fontSize: '72px', fontFamily: 'monospace', color: '#333',

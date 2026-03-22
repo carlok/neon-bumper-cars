@@ -194,6 +194,15 @@ function spawnBots() {
   }
 }
 
+function isBotDirBlocked(bot, vx, vy) {
+  const tx = bot.x + vx;
+  const ty = bot.y + vy;
+  for (const ob of obstacles) {
+    if (aabbOverlap(tx, ty, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) return true;
+  }
+  return false;
+}
+
 function updateBotAI(bot, now) {
   // Find nearest alive player
   let nearest = null;
@@ -203,66 +212,46 @@ function updateBotAI(bot, now) {
     if (!p.alive) continue;
     const dx = p.x - bot.x;
     const dy = p.y - bot.y;
-    const dist = Math.abs(dx) + Math.abs(dy); // Manhattan distance
+    const dist = Math.abs(dx) + Math.abs(dy);
     if (dist < nearestDist) {
       nearestDist = dist;
       nearest = p;
     }
   }
 
-  // Retarget every ~30 ticks (0.5s) or if no velocity
-  if (!nearest || now < bot.retargetAt) return;
-  bot.retargetAt = now + 500;
+  // Retarget: every 500ms normally, immediately if stuck (vx=0 and vy=0)
+  const isStuck = bot.vx === 0 && bot.vy === 0;
+  if (!nearest || (!isStuck && now < bot.retargetAt)) return;
+  bot.retargetAt = now + (isStuck ? 100 : 500); // retry faster when stuck
 
   const dx = nearest.x - bot.x;
   const dy = nearest.y - bot.y;
 
-  // Chase along dominant axis (Manhattan movement)
-  let newVx = 0, newVy = 0;
+  // Build priority list of directions: chase axis first, then alternates, then opposites
+  const dirs = [];
   if (Math.abs(dx) > Math.abs(dy)) {
-    newVx = dx > 0 ? BOT_SPEED : -BOT_SPEED;
+    dirs.push([dx > 0 ? BOT_SPEED : -BOT_SPEED, 0]); // primary: horizontal chase
+    dirs.push([0, dy > 0 ? BOT_SPEED : -BOT_SPEED]);  // secondary: vertical chase
+    dirs.push([0, dy > 0 ? -BOT_SPEED : BOT_SPEED]);   // vertical opposite
+    dirs.push([dx > 0 ? -BOT_SPEED : BOT_SPEED, 0]);   // horizontal opposite
   } else {
-    newVy = dy > 0 ? BOT_SPEED : -BOT_SPEED;
+    dirs.push([0, dy > 0 ? BOT_SPEED : -BOT_SPEED]);  // primary: vertical chase
+    dirs.push([dx > 0 ? BOT_SPEED : -BOT_SPEED, 0]);  // secondary: horizontal chase
+    dirs.push([dx > 0 ? -BOT_SPEED : BOT_SPEED, 0]);   // horizontal opposite
+    dirs.push([0, dy > 0 ? -BOT_SPEED : BOT_SPEED]);   // vertical opposite
   }
 
-  // Check if new direction is blocked by obstacle
-  const testX = bot.x + newVx;
-  const testY = bot.y + newVy;
-  let blocked = false;
-  for (const ob of obstacles) {
-    if (aabbOverlap(testX, testY, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
-      blocked = true;
-      break;
+  // Try each direction in priority order
+  for (const [vx, vy] of dirs) {
+    if (!isBotDirBlocked(bot, vx, vy)) {
+      bot.vx = vx;
+      bot.vy = vy;
+      return;
     }
   }
-  if (!blocked) {
-    bot.vx = newVx;
-    bot.vy = newVy;
-  } else {
-    // Try the other axis
-    newVx = 0; newVy = 0;
-    if (Math.abs(dx) <= Math.abs(dy)) {
-      newVx = dx > 0 ? BOT_SPEED : -BOT_SPEED;
-    } else {
-      newVy = dy > 0 ? BOT_SPEED : -BOT_SPEED;
-    }
-    const testX2 = bot.x + newVx;
-    const testY2 = bot.y + newVy;
-    let blocked2 = false;
-    for (const ob of obstacles) {
-      if (aabbOverlap(testX2, testY2, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
-        blocked2 = true;
-        break;
-      }
-    }
-    if (!blocked2) {
-      bot.vx = newVx;
-      bot.vy = newVy;
-    } else {
-      bot.vx = 0;
-      bot.vy = 0;
-    }
-  }
+  // All 4 directions blocked (shouldn't happen) — stay put briefly
+  bot.vx = 0;
+  bot.vy = 0;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
@@ -322,11 +311,12 @@ io.on('connection', (socket) => {
     existing.y = pos.y;
     existing.vx = 0;
     existing.vy = 0;
+    existing.score = 0;
     existing.lives = 3;
     existing.alive = true;
     existing.invulnUntil = Date.now() + INVULN_MS;
-    // Keep score, color, emoji, name
-    socket.emit('player-info', { color: existing.color, emoji: existing.emoji, name: existing.name, gameState });
+    // Keep color, emoji, name — reset score
+    socket.emit('player-info', { color: existing.color, emoji: existing.emoji, name: existing.name, score: 0, gameState });
     io.to('display').emit('player-joined', existing);
   });
 

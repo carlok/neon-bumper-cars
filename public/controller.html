@@ -246,6 +246,7 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       myColor = data.color;
       myName = data.name || myName;
       myGameState = data.gameState;
+      if (data.score !== undefined) score = data.score;
       lives = 3;
       updateUI();
     });
