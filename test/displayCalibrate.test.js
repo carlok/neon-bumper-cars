@@ -2,6 +2,7 @@
 
 const {
   DISPLAY_LOGIC_W,
+  DISPLAY_LOGIC_H,
   ARENA_LOGIC_W,
   DISPLAY_CELL_REF_WORLD,
   displayCameraCenterX,
@@ -53,11 +54,16 @@ describe('displayCameraCenterX', () => {
     expect(displayCameraCenterX(0.5)).toBe(DISPLAY_LOGIC_W / 2);
   });
 
-  test('z > 1 right-anchors so view ends at x = 1920', () => {
+  test('z > 1 left-anchors so view starts at x = 0', () => {
     const z = 2;
     const cx = displayCameraCenterX(z);
     const halfW = DISPLAY_LOGIC_W / 2 / z;
-    expect(cx + halfW).toBeCloseTo(DISPLAY_LOGIC_W, 10);
+    expect(cx - halfW).toBeCloseTo(0, 10);
+  });
+
+  test('z > 1 center x equals half-viewport width', () => {
+    const z = 3;
+    expect(displayCameraCenterX(z)).toBeCloseTo(DISPLAY_LOGIC_W / 2 / z, 10);
   });
 });
 
@@ -73,10 +79,17 @@ describe('visibleArenaRefCellsAtZoom', () => {
     expect(v.refRows).toBeCloseTo(1080 / DISPLAY_CELL_REF_WORLD, 5);
   });
 
-  test('zoom 2 right-anchored: 640 arena world units visible', () => {
+  test('zoom 2 left-top-anchored: 960 arena world units wide, 540 tall', () => {
     const v = visibleArenaRefCellsAtZoom(2);
-    expect(v.refCols).toBeCloseTo(640 / DISPLAY_CELL_REF_WORLD, 5);
-    expect(v.refRows).toBeCloseTo(540 / DISPLAY_CELL_REF_WORLD, 5);
+    // left-top-anchor: cx=480, halfW=480 → x0=0, x1=min(1600,960)=960 → 960 units visible
+    expect(v.refCols).toBeCloseTo((DISPLAY_LOGIC_W / 2) / DISPLAY_CELL_REF_WORLD, 5);
+    expect(v.refRows).toBeCloseTo((DISPLAY_LOGIC_H / 2) / DISPLAY_CELL_REF_WORLD, 5);
+  });
+
+  test('zoom 3 left-top-anchored: ~427 wide, 360 tall', () => {
+    const v = visibleArenaRefCellsAtZoom(3);
+    expect(v.refCols).toBeCloseTo((DISPLAY_LOGIC_W / 3) / DISPLAY_CELL_REF_WORLD, 5);
+    expect(v.refRows).toBeCloseTo((DISPLAY_LOGIC_H / 3) / DISPLAY_CELL_REF_WORLD, 5);
   });
 });
 

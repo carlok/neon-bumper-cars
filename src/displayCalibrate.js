@@ -37,8 +37,9 @@ function arenaContentWidthCss(displayWidthCss) {
 }
 
 /**
- * Camera center X so the leaderboard (320 world units at x ≥ 1600) stays on-screen when zoomed in.
- * z ≤ 1: center full 1920-wide layout (arena + sidebar). z > 1: pin right edge to x = 1920.
+ * Camera center X for the display camera.
+ * z ≤ 1: center full 1920-wide layout (arena + sidebar).
+ * z > 1: left-anchor so the viewport starts at x = 0, showing the arena top-left corner.
  * @param {number} zoom
  * @returns {number}
  */
@@ -50,12 +51,12 @@ function displayCameraCenterX(zoom) {
   if (z <= 1) {
     return DISPLAY_CAMERA_CENTER_X_FULL;
   }
-  return DISPLAY_LOGIC_W - DISPLAY_LOGIC_W / 2 / z;
+  return DISPLAY_LOGIC_W / 2 / z;
 }
 
 /**
  * How many DISPLAY_CELL_REF_WORLD-wide strips of the arena are visible at this zoom
- * (matches display.html camera: full-frame at z≤1, right-anchored at z>1).
+ * (matches display.html camera: full-frame at z≤1, left-top-anchored at z>1).
  * @param {number} zoom
  * @returns {{ refCols: number, refRows: number }}
  */
@@ -67,10 +68,11 @@ function visibleArenaRefCellsAtZoom(zoom) {
   const halfW = DISPLAY_LOGIC_W / 2 / z;
   const halfH = DISPLAY_LOGIC_H / 2 / z;
   const cx = displayCameraCenterX(z);
+  const cy = z > 1 ? DISPLAY_LOGIC_H / 2 / z : DISPLAY_CAMERA_CENTER_Y;
   const x0 = Math.max(0, cx - halfW);
   const x1 = Math.min(ARENA_LOGIC_W, cx + halfW);
-  const y0 = Math.max(0, DISPLAY_CAMERA_CENTER_Y - halfH);
-  const y1 = Math.min(DISPLAY_LOGIC_H, DISPLAY_CAMERA_CENTER_Y + halfH);
+  const y0 = Math.max(0, cy - halfH);
+  const y1 = Math.min(DISPLAY_LOGIC_H, cy + halfH);
   const w = Math.max(0, x1 - x0);
   const h = Math.max(0, y1 - y0);
   return {

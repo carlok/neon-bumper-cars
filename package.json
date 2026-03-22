@@ -1,6 +1,6 @@
 {
   "name": "neon-survival-bumper-cars",
-  "version": "1.1.21",
+  "version": "1.1.22",
   "description": "Multiplayer WebSocket bumper cars game with mobile controllers",
   "main": "server.js",
   "scripts": {
@@ -11,8 +11,13 @@
   },
   "jest": {
     "coverageDirectory": "coverage",
-    "coverageReporters": ["text", "lcov"],
-    "collectCoverageFrom": ["src/**/*.js"]
+    "coverageReporters": [
+      "text",
+      "lcov"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js"
+    ]
   },
   "dependencies": {
     "express": "^4.18.2",

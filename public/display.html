@@ -60,11 +60,13 @@ socket.on('display-cell-base', (cellBasePx) => {
   if (gameScene) gameScene.setDisplayCellBase(cellBasePx);
 });
 
-/** Keep leaderboard (x ≥ 1600) on-screen when zoomed in — sync displayCalibrate.displayCameraCenterX */
+/** Camera center X — sync with displayCalibrate.displayCameraCenterX.
+ *  z ≤ 1: center the full 1920-wide layout.
+ *  z > 1: left-anchor so the viewport starts at x=0 (arena top-left). */
 function displayCameraCenterXFromZoom(z) {
   if (!Number.isFinite(z) || z <= 0) return DISPLAY_LOGIC_W / 2;
   if (z <= 1) return DISPLAY_LOGIC_W / 2;
-  return DISPLAY_LOGIC_W - DISPLAY_LOGIC_W / 2 / z;
+  return DISPLAY_LOGIC_W / 2 / z;
 }
 
 class GameScene extends Phaser.Scene {
@@ -392,7 +394,7 @@ class GameScene extends Phaser.Scene {
   /**
    * Cell base = CSS px for 40 world units on the **arena** slice of the canvas (not counting sidebar width).
    * zoom = cellBase × ARENA_W / (40 × arenaCssWidth), arenaCssWidth = canvasWidth × (1600/1920).
-   * z>1: camera right-anchored so the leaderboard column stays visible (displayCameraCenterXFromZoom).
+   * z>1: camera left-top-anchored so the arena top-left corner is shown (displayCameraCenterXFromZoom).
    */
   setDisplayCellBase(cellBasePx) {
     const s = Number(cellBasePx);
@@ -416,7 +418,8 @@ class GameScene extends Phaser.Scene {
     let z = (s * ARENA_LOGIC_W) / (DISPLAY_CELL_REF_WORLD * arenaDw);
     z = Math.max(0.2, Math.min(z, 16));
     cam.setZoom(z);
-    cam.centerOn(displayCameraCenterXFromZoom(z), DISPLAY_LOGIC_H / 2);
+    const cy = z > 1 ? DISPLAY_LOGIC_H / 2 / z : DISPLAY_LOGIC_H / 2;
+    cam.centerOn(displayCameraCenterXFromZoom(z), cy);
   }
 
   doCoinBurst(cx, cy) {
