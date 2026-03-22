@@ -2,10 +2,11 @@
 
 const {
   ARENA_W, ARENA_H, PLAYER_SIZE, BULLET_SPEED, BULLET_MAX_DIST,
-  OBSTACLE_COUNT, OBS_SIZE, OBSTACLE_TYPES,
+  OBSTACLE_COUNT, OBS_SIZE, OBSTACLE_TYPES, BOT_GRID_CELL_STEP,
   aabbOverlap, validateDir, wrapCoord,
   collidesWithObstacles, collidesWithEntities, isPositionBlocked,
   findSafeSpot, spawnPosition, generateObstacles,
+  botSlotCorner, pickBotGridSlots, spawnBotAtAnchor,
   bounceVelocity, createBullets,
 } = require('../src/game');
 
@@ -354,6 +355,56 @@ describe('bounceVelocity', () => {
     const result = bounceVelocity(600, 256, 0, 4, PLAYER_SIZE, downObs);
     expect(result.vx + 0).toBe(0);
     expect(result.vy).toBe(-4);
+  });
+});
+
+// ── Bot grid (rigid slots) ───────────────────────────────────────────────────
+
+describe('botSlotCorner', () => {
+  test('slot 0 and 1 are same row, x increases by cell step', () => {
+    const a = botSlotCorner(0);
+    const b = botSlotCorner(1);
+    expect(b.x - a.x).toBe(BOT_GRID_CELL_STEP);
+    expect(b.y).toBe(a.y);
+  });
+
+  test('first slot is inside arena margins', () => {
+    const p = botSlotCorner(0);
+    expect(p.x).toBeGreaterThanOrEqual(100);
+    expect(p.y).toBeGreaterThanOrEqual(100);
+    expect(p.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W);
+    expect(p.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
+  });
+});
+
+describe('pickBotGridSlots', () => {
+  test('returns two non-overlapping slots with no obstacles', () => {
+    const slots = pickBotGridSlots(2, []);
+    expect(slots.length).toBe(2);
+    expect(
+      aabbOverlap(
+        slots[0].x, slots[0].y, PLAYER_SIZE, PLAYER_SIZE,
+        slots[1].x, slots[1].y, PLAYER_SIZE, PLAYER_SIZE
+      )
+    ).toBe(false);
+  });
+
+  test('slot indices are monotonic for first picks', () => {
+    const slots = pickBotGridSlots(2, []);
+    expect(slots[0].slotIndex).toBeLessThan(slots[1].slotIndex);
+  });
+});
+
+describe('spawnBotAtAnchor', () => {
+  test('returns anchor when position is clear', () => {
+    const pos = spawnBotAtAnchor(300, 400, [], {}, {}, 'bot-0');
+    expect(pos).toEqual({ x: 300, y: 400 });
+  });
+
+  test('falls back when anchor blocked by obstacle', () => {
+    const obs = [{ x: 300, y: 400, w: 200, h: 200 }];
+    const pos = spawnBotAtAnchor(300, 400, obs, {}, {}, 'bot-0');
+    expect(pos.x === 300 && pos.y === 400).toBe(false);
   });
 });
 

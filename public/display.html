@@ -19,6 +19,7 @@ let gameState = 'WAITING';
 let serverPlayers = {};
 let serverCoins = [];
 let obstacles = [];
+let gameScene = null; // reference set in create() for out-of-scene event handlers
 
 socket.on('connect', () => socket.emit('join-display'));
 socket.on('init', (data) => {
@@ -46,11 +47,15 @@ socket.on('obstacles-reset', (newObs) => {
   obstacles = newObs;
   eventQueue.push({ type: 'obstacles-reset', obstacles: newObs });
 });
+socket.on('display-zoom', (zoom) => {
+  if (gameScene) gameScene.setDisplayZoom(zoom);
+});
 
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
   create() {
+    gameScene = this;
     this.playerGfx = {};
     this.trailEmitters = {};
     this.botAuras = {};   // pulsing aura Graphics per bot
@@ -170,7 +175,7 @@ class GameScene extends Phaser.Scene {
     this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
       fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.16', {
+    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.17', {
       fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
@@ -362,6 +367,12 @@ class GameScene extends Phaser.Scene {
         this.lbBgs[i].highlight.setAlpha(0);
       }
     }
+  }
+
+  setDisplayZoom(zoom) {
+    this.cameras.main.setZoom(zoom);
+    // Center on game area (1600×1080), keeping action visible at all zoom levels
+    this.cameras.main.centerOn(800, 540);
   }
 
   doCoinBurst(cx, cy) {

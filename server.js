@@ -13,7 +13,10 @@ const {
   NEON_COLORS, PLAYER_EMOJIS, COIN_EMOJIS,
   NAME_ADJ, NAME_NOUN,
 } = require('./src/config');
-const { aabbOverlap, generateObstacles, spawnPosition } = require('./src/game');
+const {
+  aabbOverlap, generateObstacles, spawnPosition,
+  pickBotGridSlots, spawnBotAtAnchor, botSlotCorner,
+} = require('./src/game');
 const { updateBotAI } = require('./src/bot');
 
 const app    = express();
@@ -112,20 +115,39 @@ function maintainCoins() {
   }
 }
 
-// ── Bots ──────────────────────────────────────────────────────────────
+// ── Bots (rigid grid slots — no spawn overlap) ─────────────────────────
 function spawnBots() {
+  const gridSlots = pickBotGridSlots(BOT_COUNT, obstacles);
   for (let i = 0; i < BOT_COUNT; i++) {
-    const id  = `bot-${i}`;
-    const pos = spawnPosition(obstacles, players, bots, id);
-    bots[id]  = {
+    const id   = `bot-${i}`;
+    const cell = gridSlots[i];
+    const pos  = cell
+      ? spawnBotAtAnchor(cell.x, cell.y, obstacles, players, bots, id)
+      : spawnPosition(obstacles, players, bots, id);
+    const botSlotIndex = cell ? cell.slotIndex : i;
+    bots[id] = {
       id, x: pos.x, y: pos.y, vx: 0, vy: 0,
       color: '#FF0000', emoji: BOT_EMOJIS[i % BOT_EMOJIS.length],
       isBot: true, invulnUntil: 0, alive: true,
       retargetAt: 0, stuckSince: 0,
       lastX: pos.x, lastY: pos.y,
+      botSlotIndex,
     };
-    console.log(`[BOT] Spawned ${id} at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
+    console.log(`[BOT] Spawned ${id} at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) slot=${botSlotIndex}`);
   }
+}
+
+function repositionBotToHomeSlot(botId) {
+  const bot = bots[botId];
+  if (!bot) return;
+  const corner = botSlotCorner(bot.botSlotIndex);
+  const pos = spawnBotAtAnchor(
+    corner.x, corner.y, obstacles, players, bots, botId
+  );
+  Object.assign(bot, {
+    x: pos.x, y: pos.y, lastX: pos.x, lastY: pos.y,
+    vx: 0, vy: 0, retargetAt: 0, stuckSince: 0,
+  });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
@@ -193,10 +215,7 @@ io.on('connection', (socket) => {
     const humanCount = Object.values(players).filter(p => !p.isAutoplay).length;
     obstacles = generateObstacles(obstacleCount(humanCount));
     // Respawn all bots and alive players to valid positions in the new layout
-    for (const botId in bots) {
-      const pos = spawnPosition(obstacles, players, bots, botId);
-      Object.assign(bots[botId], { x: pos.x, y: pos.y, vx: 0, vy: 0 });
-    }
+    for (const botId in bots) repositionBotToHomeSlot(botId);
     for (const pid in players) {
       const p = players[pid];
       if (!p.alive) continue;
@@ -225,10 +244,7 @@ io.on('connection', (socket) => {
     if (pw !== ADMIN_PASSWORD) return;
     // Use minimum obstacles for max-player stress test
     obstacles = generateObstacles(obstacleCount(AUTOPLAY_COUNT));
-    for (const botId in bots) {
-      const pos = spawnPosition(obstacles, players, bots, botId);
-      Object.assign(bots[botId], { x: pos.x, y: pos.y, vx: 0, vy: 0 });
-    }
+    for (const botId in bots) repositionBotToHomeSlot(botId);
     for (const pid in players) {
       const p = players[pid];
       if (!p.alive) continue;
@@ -241,6 +257,12 @@ io.on('connection', (socket) => {
     maintainCoins(); // after autoplay bots exist so coinTarget() is correct
     gameState = 'PLAYING';
     io.emit('gameStateChange', gameState);
+  });
+
+  socket.on('admin-cell-size', (pw, zoom) => {
+    if (pw !== ADMIN_PASSWORD) return;
+    console.log(`[ADMIN] admin-cell-size zoom=${zoom}`);
+    io.to('display').emit('display-zoom', zoom);
   });
 
   socket.on('swipe', (dir) => {
@@ -285,7 +307,7 @@ io.on('connection', (socket) => {
 });
 
 // ── Game Loop (60 FPS) ────────────────────────────────────────────────
-setInterval(() => {
+const gameLoopTimer = setInterval(() => {
   if (gameState !== 'PLAYING') return;
   const now = Date.now();
   const alivePlayers = [];
@@ -389,7 +411,10 @@ setInterval(() => {
     if (!bot.alive) continue;
 
     const coinObs = coins.map(c => ({ x: c.x, y: c.y, w: COIN_SIZE, h: COIN_SIZE }));
-    updateBotAI(bot, now, players, [...obstacles, ...coinObs]);
+    const otherBotObs = Object.values(bots)
+      .filter(b => b.alive && b !== bot)
+      .map(b => ({ x: b.x, y: b.y, w: PLAYER_SIZE, h: PLAYER_SIZE }));
+    updateBotAI(bot, now, players, [...obstacles, ...coinObs, ...otherBotObs]);
 
     let bnx = bot.x + bot.vx;
     let bny = bot.y + bot.vy;
@@ -399,10 +424,11 @@ setInterval(() => {
     if (bny < -PLAYER_SIZE) bny = ARENA_H;
     else if (bny > ARENA_H) bny = -PLAYER_SIZE;
 
-    if (obstacles.some(ob => aabbOverlap(bnx, bny, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h))) {
+    const allBlockers = [...obstacles, ...otherBotObs];
+    if (allBlockers.some(ob => aabbOverlap(bnx, bny, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h))) {
       const bbx = bot.x - bot.vx;
       const bby = bot.y - bot.vy;
-      if (!obstacles.some(ob => aabbOverlap(bbx, bby, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h))) {
+      if (!allBlockers.some(ob => aabbOverlap(bbx, bby, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h))) {
         bot.vx = -bot.vx; bot.vy = -bot.vy;
       } else {
         bot.vx = 0; bot.vy = 0;
@@ -418,20 +444,9 @@ setInterval(() => {
     } else {
       if (bot.stuckSince === 0) bot.stuckSince = now;
       else if (now - bot.stuckSince > 1500) {
-        const pos = spawnPosition(obstacles, players, bots, botId);
-        Object.assign(bot, { x: pos.x, y: pos.y, lastX: pos.x, lastY: pos.y, vx: 0, vy: 0, stuckSince: 0, retargetAt: 0 });
-        console.log(`[BOT] ${botId} stuck → respawned at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
+        repositionBotToHomeSlot(botId);
+        console.log(`[BOT] ${botId} stuck → respawned at (${bot.x.toFixed(0)}, ${bot.y.toFixed(0)})`);
       }
-    }
-
-    // Bot–bot separation (prevent AI bots overlapping each other)
-    for (const otherBotId in bots) {
-      if (otherBotId === botId) continue;
-      const other = bots[otherBotId];
-      if (!other.alive) continue;
-      if (!aabbOverlap(bot.x, bot.y, PLAYER_SIZE, PLAYER_SIZE, other.x, other.y, PLAYER_SIZE, PLAYER_SIZE)) continue;
-      bot.vx = -bot.vx; bot.vy = -bot.vy;
-      bot.retargetAt = 0;
     }
 
     // Bot–player collision
@@ -494,8 +509,7 @@ setInterval(() => {
         if (!bot.alive) continue;
         if (!aabbOverlap(b.x, b.y, BULLET_SIZE, BULLET_SIZE, bot.x, bot.y, PLAYER_SIZE, PLAYER_SIZE)) continue;
 
-        const pos = spawnPosition(obstacles, players, bots, botId);
-        Object.assign(bot, { x: pos.x, y: pos.y, vx: 0, vy: 0, retargetAt: 0 });
+        repositionBotToHomeSlot(botId);
         io.to('display').emit('shot-hit', { x: b.x, y: b.y, type: 'bot', targetId: botId });
         io.to('display').emit('bot-respawned', { id: botId, x: bot.x, y: bot.y });
         hit = true; break;
@@ -518,6 +532,14 @@ setInterval(() => {
   io.to('display').emit('frame', { players: frame, coins, bullets });
 
 }, 1000 / TICK_RATE);
+
+function shutdown() {
+  clearInterval(gameLoopTimer);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 // ── Start ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;

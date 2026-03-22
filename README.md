@@ -22,7 +22,7 @@ graph TD
 |---|---|
 | `/display.html` | Main arena — fullscreen on projector/TV |
 | `/controller.html` | Mobile controller — scanned via QR |
-| `/admin.html` | Start/stop the game (password: `demo123`) |
+| `/admin.html` | Start/stop the game (dev default password `demo123`; production requires `ADMIN_PASSWORD` from env — see `.env.example`) |
 
 ## Development (live-reload, no rebuilds)
 
@@ -44,12 +44,14 @@ podman compose --profile dev up dev
 # Build
 podman build -t neon-bumper-cars .
 
-# Run (detached, auto-restart)
+# Run (detached, auto-restart). Production images set NODE_ENV=production;
+# you must pass a strong ADMIN_PASSWORD (not demo123).
 podman run -d \
   --name neon-bumper-cars \
   --restart unless-stopped \
   -p 3000:3000 \
   -e PORT=3000 \
+  -e ADMIN_PASSWORD='your-secret-here' \
   neon-bumper-cars
 
 # Logs
@@ -59,6 +61,8 @@ podman logs -f neon-bumper-cars
 podman stop neon-bumper-cars
 podman rm neon-bumper-cars
 ```
+
+For `podman compose up` (default `neon-bumper-cars` service): copy `.env.example` to `.env` and set a strong `ADMIN_PASSWORD`. Compose loads `.env` via `env_file` (optional, Compose v2.24+) so you do not need shell exports or `${VAR}` interpolation warnings. The app refuses to start in production without a valid password.
 
 ### Persist across reboots (systemd)
 
@@ -86,11 +90,11 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 
 1. Open `/display.html` on a projector or large screen.
 2. Players scan the QR code (or navigate to `/controller.html`).
-3. Admin opens `/admin.html`, enters password `demo123`, hits **Start Game**.
-4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — fires in all 4 directions at once (10 shots per spawn, refilled when you rejoin). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
+3. Admin opens `/admin.html`, enters password (`demo123` in dev; production uses `ADMIN_PASSWORD` from env), hits **Start Game**.
+4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — one tap spawns **4 bullets** (up/down/left/right) from your center. **Ammo:** 10 shots after each spawn/rejoin; **cooldown** ~800 ms between taps; bullets travel up to ~600 px then despawn; you cannot hit yourself (owner’s bullets ignore you). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
    - Obstacle count scales automatically with player count: fewer obstacles for large crowds, more for small groups (formula: `max(4, 20 − ⌊players/2⌋)`).
    - **Autoplay mode** (admin "🤖 Autoplay (32)" button): spawns 32 random-walk bots as regular players — useful for stress-testing the server at max capacity.
-5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact! Shoot them to teleport them away.
+5. Watch out for **robot bots** (🤖👾) — they spawn on a **fixed grid** of cells so they do not overlap at rest; they chase the nearest player and deal damage on contact. Shoot them to send them back to their home cell (or a safe fallback if that cell is blocked).
 6. Last player standing wins — or highest score when admin stops the game.
 
 ## Source layout
@@ -103,6 +107,8 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 | `src/bot.js` | Bot AI (`isBotDirBlocked`, `updateBotAI`) |
 | `test/game.test.js` | Unit tests for `src/game.js` |
 | `test/bot.test.js` | Unit tests for `src/bot.js` |
+| `test/config.test.js` | Production `ADMIN_PASSWORD` guard |
+| `.env.example` | Template for Compose / local prod (`cp` → `.env`) |
 | `public/` | Client HTML (display, controller, admin) |
 
 ## Tests
@@ -117,8 +123,8 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 ## Features
 
 - **Emoji players** — random people, animals, and vehicles (curated for projector visibility); your emoji + name shown large on your phone
-- **Robot bots** — 2 AI chasers (🤖👾) with red particle trails and a pulsing red square aura so they're instantly recognisable
-- **Shooting** — tap to fire in all 4 directions at once; 10 shots per spawn, refilled on rejoin
+- **Robot bots** — 2 AI chasers (🤖👾) on rigid grid slots (no spawn overlap); red trails + pulsing aura
+- **Shooting** — tap → 4 cardinal bullets; 10 shots per life; ~800 ms cooldown; ~600 px range; self-immune; refilled on rejoin
 - **Adaptive obstacles** — obstacle count scales inversely with player count (`max(4, 20 − ⌊n/2⌋)`); regenerated fresh each time the game starts
 - **Autoplay stress-test** — admin panel "🤖 Autoplay (32)" fills the arena with 32 random-walk fake players to verify server performance at capacity
 - **Food/drink coins** — count scales with players (1 coin per 2 alive players, min 1); always-pulsing glow, staggered per coin
@@ -127,7 +133,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
 - **Adaptive render resolution** — display canvas scales to native pixels on HD, 2K, 4K, and Retina displays; emojis stay sharp at any screen size
-- **Wrap-around arena** (1920×1080) — exit one side, appear on the other
+- **Wrap-around arena** (1600×1080 logical) — exit one side, appear on the other
 - **Leaderboard** — live rank, score, lives, and remaining shots for each player
 - **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)
 - **Debug logging** — server and controller log join flow for troubleshooting

@@ -6,8 +6,14 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    # Loads ADMIN_PASSWORD (and overrides) without Compose-time ${VAR} warnings.
+    # Copy `.env.example` → `.env` before `podman compose up` (Compose v2.24+).
+    env_file:
+      - path: .env
+        required: false
     environment:
       - PORT=3000
+      - NODE_ENV=production
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/admin.html"]
       interval: 30s

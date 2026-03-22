@@ -116,6 +116,56 @@ function findSafeSpot(size, obstacles, players, bots, excludeId) {
   return { x: 100, y: 100 }; // absolute last resort
 }
 
+/** Step between rigid bot-slot cell origins (no overlap at rest). */
+const BOT_GRID_CELL_STEP = PLAYER_SIZE + 24;
+
+/**
+ * Top-left corner of the bot slot at index `slotIndex` (row-major grid).
+ * @param {number} slotIndex - 0-based slot in row-major order
+ * @param {number} [cellStep]
+ * @returns {{ x: number, y: number }}
+ */
+function botSlotCorner(slotIndex, cellStep = BOT_GRID_CELL_STEP) {
+  const margin = 100;
+  const cols = Math.max(1, Math.floor((ARENA_W - 2 * margin) / cellStep));
+  const row = Math.floor(slotIndex / cols);
+  const col = slotIndex % cols;
+  return { x: margin + col * cellStep, y: margin + row * cellStep };
+}
+
+/**
+ * Pick up to `botCount` obstacle-free grid slots (rigid matrix). Each slot is
+ * one cell; step >= PLAYER_SIZE keeps bots from overlapping at spawn.
+ * @returns {Array<{ x: number, y: number, slotIndex: number }>}
+ */
+function pickBotGridSlots(botCount, obstacles, cellStep = BOT_GRID_CELL_STEP) {
+  const picked = [];
+  const margin = 100;
+  const maxTry = 256;
+  for (let slot = 0; slot < maxTry && picked.length < botCount; slot++) {
+    const { x, y } = botSlotCorner(slot, cellStep);
+    if (x + PLAYER_SIZE > ARENA_W - margin || y + PLAYER_SIZE > ARENA_H - margin) {
+      continue;
+    }
+    if (!collidesWithObstacles(x, y, PLAYER_SIZE, obstacles, 10)) {
+      picked.push({ x, y, slotIndex: slot });
+    }
+  }
+  return picked;
+}
+
+/**
+ * Try anchor corner; if blocked by entities/obstacles, fall back to spawnPosition.
+ */
+function spawnBotAtAnchor(
+  anchorX, anchorY, obstacles, players, bots, excludeId, rng = Math.random
+) {
+  if (!isPositionBlocked(anchorX, anchorY, PLAYER_SIZE, obstacles, players, bots, excludeId)) {
+    return { x: anchorX, y: anchorY };
+  }
+  return spawnPosition(obstacles, players, bots, excludeId, rng);
+}
+
 /**
  * Random safe spawn for a player or bot.
  * @returns {{ x: number, y: number }}
@@ -193,9 +243,11 @@ module.exports = {
   INVULN_MS, MAX_PLAYERS, MAX_SHOTS, SHOOT_COOLDOWN_MS,
   OBSTACLE_COUNT, OBS_SIZE, OBSTACLE_TYPES, OBS_SIZES,
   VALID_DIRS, DIR_VECTORS, ALL_DIRS,
+  BOT_GRID_CELL_STEP,
   // functions
   aabbOverlap, validateDir, wrapCoord,
   collidesWithObstacles, collidesWithEntities, isPositionBlocked,
   findSafeSpot, spawnPosition, generateObstacles,
+  botSlotCorner, pickBotGridSlots, spawnBotAtAnchor,
   bounceVelocity, createBullets,
 };

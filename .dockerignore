@@ -4,3 +4,7 @@ npm-debug.log
 .gitignore
 README.md
 docker-compose.yml
+test/
+coverage/
+Dockerfile.dev
+*.md

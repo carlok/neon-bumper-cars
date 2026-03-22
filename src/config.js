@@ -7,7 +7,15 @@ const PLAYER_SIZE     = 40;
 const PLAYER_SPEED    = 4;
 const COIN_SIZE       = 30;
 const INVULN_MS       = 2000;
-const ADMIN_PASSWORD  = process.env.ADMIN_PASSWORD || 'demo123';
+const rawAdminPassword = process.env.ADMIN_PASSWORD;
+const ADMIN_PASSWORD  = rawAdminPassword || 'demo123';
+if (process.env.NODE_ENV === 'production') {
+  if (!rawAdminPassword || rawAdminPassword === 'demo123') {
+    throw new Error(
+      'Set a strong ADMIN_PASSWORD in production (not empty, not demo123).'
+    );
+  }
+}
 const TICK_RATE       = 60;
 const MAX_PLAYERS     = 32;
 const BULLET_SPEED    = 10;
