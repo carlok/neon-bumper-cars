@@ -292,8 +292,9 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 document.addEventListener('touchend', (e) => {
+  if (!joined) return; // Let the click event through to the join button
   e.preventDefault();
-  if (!joined || myGameState !== 'PLAYING' || !socket) return;
+  if (myGameState !== 'PLAYING' || !socket) return;
   const dx = e.changedTouches[0].clientX - touchStartX;
   const dy = e.changedTouches[0].clientY - touchStartY;
   const minSwipe = 20;

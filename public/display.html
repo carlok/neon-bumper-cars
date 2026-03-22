@@ -5,7 +5,7 @@
 <title>Neon Bumper Cars — Display</title>
 <style>
   * { margin:0; padding:0; }
-  body { background:#000; overflow:hidden; }
+  body { background:#f5f0d0; overflow:hidden; }
   canvas { display:block; }
 </style>
 </head>
@@ -46,25 +46,24 @@ class GameScene extends Phaser.Scene {
     this.playerGfx = {};
     this.trailEmitters = {};
 
-    // ── Terrain background (lightweight tiled ground texture) ────────
-    // Draw a grid of faint terrain characters — computed once, very cheap
+    // ── Terrain background (lightweight tiled ground on light yellow) ──
+    // Faint earthy characters — computed once, very cheap
     const terrainTiles = ['░', '▒', '·', '∙', '╌', '░'];
-    const terrainColors = ['#0a1a0a', '#0d1f0d', '#0a180f', '#0f1a0a', '#0b1b0b', '#0e1c0e'];
+    const terrainColors = ['#e0d8a8', '#d8d0a0', '#e5ddb0', '#ddd5a5', '#e2daa8', '#d5cd98'];
     const tileSize = 80;
     for (let tx = 0; tx < 1920; tx += tileSize) {
       for (let ty = 0; ty < 1080; ty += tileSize) {
         const idx = ((tx / tileSize) + (ty / tileSize)) % terrainTiles.length;
-        // Slight random variation for organic look
         const jitter = ((tx * 7 + ty * 13) % 6);
         const tile = terrainTiles[(idx + jitter) % terrainTiles.length];
         const color = terrainColors[(idx + jitter) % terrainColors.length];
         this.add.text(tx + tileSize / 2, ty + tileSize / 2, tile, {
           fontSize: '48px', fontFamily: 'monospace', color: color
-        }).setOrigin(0.5).setDepth(0).setAlpha(0.6);
+        }).setOrigin(0.5).setDepth(0).setAlpha(0.5);
       }
     }
 
-    // Draw a few larger faint terrain emoji patches for variety
+    // Faint terrain emoji patches for variety
     const patches = [
       { e: '🌿', c: 12 }, { e: '🌾', c: 8 }, { e: '🪨', c: 6 }, { e: '🏜️', c: 5 }
     ];
@@ -73,7 +72,7 @@ class GameScene extends Phaser.Scene {
         const px = 60 + Math.floor(((i * 347 + patch.c * 113) % 1800));
         const py = 60 + Math.floor(((i * 521 + patch.c * 79) % 960));
         this.add.text(px, py, patch.e, { fontSize: '28px' })
-          .setOrigin(0.5).setDepth(1).setAlpha(0.15);
+          .setOrigin(0.5).setDepth(1).setAlpha(0.12);
       }
     }
 
@@ -100,17 +99,17 @@ class GameScene extends Phaser.Scene {
 
     // URL text under QR
     this.urlText = this.add.text(140, 1050, origin + '/controller.html', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#888'
+      fontSize: '13px', fontFamily: 'monospace', color: '#555'
     }).setOrigin(0.5).setDepth(100);
 
     // Waiting text
     this.waitingText = this.add.text(960, 480, 'WAITING FOR HOST...', {
-      fontSize: '72px', fontFamily: 'monospace', color: '#0ff',
-      stroke: '#006', strokeThickness: 4
+      fontSize: '72px', fontFamily: 'monospace', color: '#333',
+      stroke: '#999', strokeThickness: 4
     }).setOrigin(0.5).setDepth(200).setAlpha(0);
 
     // Leaderboard background
-    this.lbBg = this.add.rectangle(1920 - 140, 30, 260, 400, 0x000000, 0.6)
+    this.lbBg = this.add.rectangle(1920 - 140, 30, 260, 400, 0x000000, 0.5)
       .setOrigin(0.5, 0).setDepth(150);
     this.lbTitle = this.add.text(1920 - 140, 36, '🏆 LEADERBOARD', {
       fontSize: '18px', fontFamily: 'monospace', color: '#ff0', align: 'center'
@@ -137,9 +136,17 @@ class GameScene extends Phaser.Scene {
     // Create obstacles once
     if (!this.obstaclesCreated && obstacles.length > 0) {
       this.obstaclesCreated = true;
-      const emojiMap = { tree: '🌲', stone: '🪨', lake: '💧' };
+      const treeEmojis = ['🌲', '🌳', '🌴', '🎄', '🎋'];
+      const emojiMap = { stone: '🪨', lake: '🌊' };
+      let treeIdx = 0;
       for (const ob of obstacles) {
-        const emoji = emojiMap[ob.type] || '❓';
+        let emoji;
+        if (ob.type === 'tree') {
+          emoji = treeEmojis[treeIdx % treeEmojis.length];
+          treeIdx++;
+        } else {
+          emoji = emojiMap[ob.type] || '❓';
+        }
         const t = this.add.text(ob.x + ob.w / 2, ob.y + ob.h / 2, emoji, {
           fontSize: `${Math.min(ob.w, ob.h)}px`
         }).setOrigin(0.5).setDepth(3);
@@ -307,7 +314,7 @@ const config = {
   type: Phaser.WEBGL,
   width: 1920,
   height: 1080,
-  backgroundColor: '#000000',
+  backgroundColor: '#f5f0d0',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
