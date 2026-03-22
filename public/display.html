@@ -158,6 +158,11 @@ class GameScene extends Phaser.Scene {
     pg.generateTexture('particle', 6, 6);
     pg.destroy();
 
+    // Version label
+    this.add.text(6, 1064, 'v1.1.0', {
+      fontSize: '10px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.2)'
+    }).setDepth(999);
+
     this.obstaclesCreated = false;
   }
 
