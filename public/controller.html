@@ -60,12 +60,17 @@
 </div>
 
 <div id="game-ui">
+  <div id="player-name" style="font-size:20px; color:#aaa; margin-bottom:4px;"></div>
   <div id="status-text">CONNECTING…</div>
   <div id="stats">
     <div id="score-display">0</div>
     <div id="lives-display">♥♥♥</div>
   </div>
   <div id="direction-indicator">↑</div>
+  <button id="rejoin-btn" style="display:none; font-size:24px; font-weight:700; padding:20px 40px;
+    border:3px solid #0ff; border-radius:16px; background:transparent; color:#0ff;
+    cursor:pointer; text-transform:uppercase; letter-spacing:2px; margin-top:20px;
+    animation: pulse 1.5s ease-in-out infinite;">🔄 TAP TO REJOIN</button>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -137,6 +142,7 @@ class SFX {
 // ── State ─────────────────────────────────────────────────────────────
 let sfx, socket;
 let myColor = '#0ff';
+let myName = '';
 let myGameState = 'WAITING';
 let score = 0;
 let lives = 3;
@@ -148,6 +154,8 @@ const statusText = document.getElementById('status-text');
 const scoreDisplay = document.getElementById('score-display');
 const livesDisplay = document.getElementById('lives-display');
 const dirIndicator = document.getElementById('direction-indicator');
+const playerNameEl = document.getElementById('player-name');
+const rejoinBtn = document.getElementById('rejoin-btn');
 const arrows = { up:'↑', down:'↓', left:'←', right:'→' };
 
 // ── Join ──────────────────────────────────────────────────────────────
@@ -188,7 +196,9 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
     socket.on('player-info', (data) => {
       console.log('[JOIN] player-info received:', data);
       myColor = data.color;
+      myName = data.name || myName;
       myGameState = data.gameState;
+      lives = 3;
       updateUI();
     });
 
@@ -237,6 +247,9 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
 });
 
 function updateUI() {
+  playerNameEl.textContent = myName;
+  rejoinBtn.style.display = 'none';
+
   if (myGameState === 'WAITING') {
     document.body.style.background = myColor;
     statusText.textContent = 'WAITING FOR HOST…';
@@ -255,17 +268,29 @@ function updateUI() {
     livesDisplay.textContent = '♥'.repeat(Math.max(0, lives));
   } else if (myGameState === 'ELIMINATED') {
     document.body.style.background = '#222';
-    statusText.textContent = 'ELIMINATED!\nLOOK AT THE SCREEN';
+    statusText.textContent = 'ELIMINATED!';
     statusText.style.color = '#ff3366';
     scoreDisplay.style.display = 'block';
     livesDisplay.style.display = 'none';
     dirIndicator.style.display = 'none';
+    rejoinBtn.style.display = 'block';
   } else if (myGameState === 'STOPPED') {
     document.body.style.background = '#111';
     statusText.textContent = 'GAME OVER';
     statusText.style.color = '#888';
   }
 }
+
+// ── Rejoin after elimination ─────────────────────────────────────────
+rejoinBtn.addEventListener('click', () => {
+  console.log('[REJOIN] Rejoin tapped');
+  if (!socket || myGameState !== 'ELIMINATED') return;
+  socket.emit('rejoin-player');
+  myGameState = 'PLAYING';
+  lives = 3;
+  rejoinBtn.style.display = 'none';
+  updateUI();
+});
 
 function flash() {
   document.body.classList.add('flash');

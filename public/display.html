@@ -31,7 +31,8 @@ socket.on('frame', (data) => {
   serverPlayers = data.players;
   serverCoin = data.coin;
 });
-socket.on('coin-spawned', (c) => { serverCoin = c; });
+socket.on('coin-spawned', (c) => { serverCoin = c; coinIsNew = true; });
+let coinIsNew = true; // glow on first coin too
 
 // Events queued for Phaser scene
 const eventQueue = [];
@@ -46,12 +47,22 @@ class GameScene extends Phaser.Scene {
     this.playerGfx = {};
     this.trailEmitters = {};
 
-    // ── Terrain background (lightweight tiled ground on light yellow) ──
-    // Faint earthy characters — computed once, very cheap
+    // ── Layout constants ──────────────────────────────────────────────
+    const GAME_W = 1600;  // game area width (matches server ARENA_W)
+    const SIDEBAR_W = 320; // right sidebar
+    const SIDEBAR_X = GAME_W; // sidebar starts here
+
+    // ── Sidebar background ──────────────────────────────────────────
+    this.add.rectangle(SIDEBAR_X + SIDEBAR_W / 2, 540, SIDEBAR_W, 1080, 0x2a2520)
+      .setDepth(140);
+    // Divider line
+    this.add.rectangle(SIDEBAR_X, 540, 3, 1080, 0x444444).setDepth(141);
+
+    // ── Terrain background (game area only) ─────────────────────────
     const terrainTiles = ['░', '▒', '·', '∙', '╌', '░'];
     const terrainColors = ['#e0d8a8', '#d8d0a0', '#e5ddb0', '#ddd5a5', '#e2daa8', '#d5cd98'];
     const tileSize = 80;
-    for (let tx = 0; tx < 1920; tx += tileSize) {
+    for (let tx = 0; tx < GAME_W; tx += tileSize) {
       for (let ty = 0; ty < 1080; ty += tileSize) {
         const idx = ((tx / tileSize) + (ty / tileSize)) % terrainTiles.length;
         const jitter = ((tx * 7 + ty * 13) % 6);
@@ -63,13 +74,13 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Faint terrain emoji patches for variety
+    // Faint terrain emoji patches (game area only)
     const patches = [
       { e: '🌿', c: 12 }, { e: '🌾', c: 8 }, { e: '🪨', c: 6 }, { e: '🏜️', c: 5 }
     ];
     for (const patch of patches) {
       for (let i = 0; i < patch.c; i++) {
-        const px = 60 + Math.floor(((i * 347 + patch.c * 113) % 1800));
+        const px = 60 + Math.floor(((i * 347 + patch.c * 113) % (GAME_W - 120)));
         const py = 60 + Math.floor(((i * 521 + patch.c * 79) % 960));
         this.add.text(px, py, patch.e, { fontSize: '28px' })
           .setOrigin(0.5).setDepth(1).setAlpha(0.12);
@@ -78,49 +89,53 @@ class GameScene extends Phaser.Scene {
 
     // Obstacle text objects
     this.obsTexts = [];
-    // Will be created once obstacles arrive
 
     // Coin text (emoji updated dynamically from server)
     this.coinText = this.add.text(0, 0, '🍎', { fontSize: '36px' }).setOrigin(0.5).setDepth(5);
+    this.coinGlowTime = 0; // for glow animation on new coin
 
-    // QR code
+    // ── Sidebar: Leaderboard ────────────────────────────────────────
+    const lbCenterX = SIDEBAR_X + SIDEBAR_W / 2;
+    this.lbTitle = this.add.text(lbCenterX, 24, '🏆 LEADERBOARD', {
+      fontSize: '20px', fontFamily: 'monospace', color: '#ffd700', align: 'center'
+    }).setOrigin(0.5, 0).setDepth(151);
+    this.lbRows = [];
+    for (let i = 0; i < 10; i++) {
+      const t = this.add.text(SIDEBAR_X + 14, 60 + i * 34, '', {
+        fontSize: '14px', fontFamily: 'monospace', color: '#ddd'
+      }).setDepth(151);
+      this.lbRows.push(t);
+    }
+
+    // ── Sidebar: QR code (below leaderboard) ────────────────────────
     const origin = window.location.origin;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(origin + '/controller.html')}`;
-    // Use DOM image for QR since Phaser needs a loaded texture
     this.qrLoaded = false;
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.textures.addImage('qr', img);
-      this.qrSprite = this.add.image(140, 940, 'qr').setDisplaySize(200, 200).setDepth(100).setAlpha(0.85);
+      this.qrSprite = this.add.image(lbCenterX, 520, 'qr')
+        .setDisplaySize(180, 180).setDepth(152).setAlpha(0.9);
       this.qrLoaded = true;
     };
     img.src = qrUrl;
 
-    // URL text under QR
-    this.urlText = this.add.text(140, 1050, origin + '/controller.html', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#555'
-    }).setOrigin(0.5).setDepth(100);
+    // "SCAN TO PLAY" text
+    this.add.text(lbCenterX, 440, '📱 SCAN TO PLAY', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#aaa', align: 'center'
+    }).setOrigin(0.5, 0).setDepth(152);
 
-    // Waiting text
-    this.waitingText = this.add.text(960, 480, 'WAITING FOR HOST...', {
+    // URL text under QR
+    this.urlText = this.add.text(lbCenterX, 620, origin + '/controller.html', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#777', wordWrap: { width: SIDEBAR_W - 20 }
+    }).setOrigin(0.5, 0).setDepth(152);
+
+    // Waiting text (centered in game area)
+    this.waitingText = this.add.text(GAME_W / 2, 480, 'WAITING FOR HOST...', {
       fontSize: '72px', fontFamily: 'monospace', color: '#333',
       stroke: '#999', strokeThickness: 4
     }).setOrigin(0.5).setDepth(200).setAlpha(0);
-
-    // Leaderboard background
-    this.lbBg = this.add.rectangle(1920 - 140, 30, 260, 400, 0x000000, 0.5)
-      .setOrigin(0.5, 0).setDepth(150);
-    this.lbTitle = this.add.text(1920 - 140, 36, '🏆 LEADERBOARD', {
-      fontSize: '18px', fontFamily: 'monospace', color: '#ff0', align: 'center'
-    }).setOrigin(0.5, 0).setDepth(151);
-    this.lbRows = [];
-    for (let i = 0; i < 10; i++) {
-      const t = this.add.text(1920 - 260, 68 + i * 32, '', {
-        fontSize: '15px', fontFamily: 'monospace', color: '#fff'
-      }).setDepth(151);
-      this.lbRows.push(t);
-    }
 
     // Particle texture (small white square)
     const pg = this.make.graphics({ add: false });
@@ -232,15 +247,27 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Coin
+    // Coin with glow effect on spawn
     if (serverCoin) {
       if (serverCoin.emoji) this.coinText.setText(serverCoin.emoji);
       this.coinText.setPosition(serverCoin.x + 15, serverCoin.y + 15).setVisible(true);
+      if (coinIsNew) {
+        coinIsNew = false;
+        this.coinGlowTime = this.time.now;
+      }
+      // Pulsing glow for ~2 seconds after spawn
+      const glowAge = this.time.now - this.coinGlowTime;
+      if (glowAge < 2000) {
+        const pulse = 1.0 + 0.5 * Math.sin(glowAge / 80);
+        this.coinText.setScale(pulse);
+      } else {
+        this.coinText.setScale(1);
+      }
     } else {
       this.coinText.setVisible(false);
     }
 
-    // Leaderboard (exclude bots)
+    // Leaderboard with names (exclude bots)
     const sorted = Object.values(serverPlayers)
       .filter(p => p.alive && !p.isBot)
       .sort((a, b) => b.score - a.score)
@@ -248,8 +275,9 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < 10; i++) {
       if (i < sorted.length) {
         const p = sorted[i];
-        const hearts = '♥'.repeat(p.lives);
-        this.lbRows[i].setText(`${i + 1}. ■ ${p.score}pts ${hearts}`);
+        const hearts = '♥'.repeat(Math.max(0, p.lives));
+        const name = p.name || '???';
+        this.lbRows[i].setText(`${i + 1}. ${p.emoji || '■'} ${name} ${p.score}p ${hearts}`);
         this.lbRows[i].setColor(p.color);
       } else {
         this.lbRows[i].setText('');

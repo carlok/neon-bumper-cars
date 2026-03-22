@@ -10,7 +10,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Constants ──────────────────────────────────────────────────────────
-const ARENA_W = 1920;
+const ARENA_W = 1600; // leave 320px on the right for sidebar (leaderboard + QR)
 const ARENA_H = 1080;
 const PLAYER_SIZE = 40;
 const PLAYER_SPEED = 4;
@@ -141,6 +141,25 @@ function randomCoinEmoji() {
   return COIN_EMOJIS[Math.floor(Math.random() * COIN_EMOJIS.length)];
 }
 
+// ── Random name generator ────────────────────────────────────────────
+const NAME_ADJ = [
+  'Turbo', 'Mega', 'Ultra', 'Super', 'Hyper', 'Nitro', 'Neon', 'Cosmic',
+  'Funky', 'Wild', 'Crazy', 'Epic', 'Mighty', 'Swift', 'Brave', 'Tiny',
+  'Giant', 'Magic', 'Sneaky', 'Lucky', 'Dizzy', 'Fuzzy', 'Zippy', 'Jolly',
+  'Fiery', 'Icy', 'Stormy', 'Sunny', 'Shadow', 'Golden', 'Pixel', 'Laser'
+];
+const NAME_NOUN = [
+  'Racer', 'Comet', 'Flash', 'Bolt', 'Rocket', 'Blaze', 'Storm', 'Thunder',
+  'Ninja', 'Pirate', 'Viking', 'Knight', 'Wizard', 'Panda', 'Tiger', 'Fox',
+  'Shark', 'Eagle', 'Wolf', 'Bear', 'Falcon', 'Dragon', 'Phoenix', 'Waffle',
+  'Taco', 'Pickle', 'Muffin', 'Banana', 'Nugget', 'Cookie', 'Noodle', 'Pretzel'
+];
+function randomName() {
+  const adj = NAME_ADJ[Math.floor(Math.random() * NAME_ADJ.length)];
+  const noun = NAME_NOUN[Math.floor(Math.random() * NAME_NOUN.length)];
+  return `${adj} ${noun}`;
+}
+
 // ── Bot helpers ──────────────────────────────────────────────────────
 function spawnBots() {
   for (let i = 0; i < BOT_COUNT; i++) {
@@ -261,6 +280,7 @@ io.on('connection', (socket) => {
     const pos = spawnPlayer();
     const color = nextColor();
     const emoji = nextFaceEmoji();
+    const name = randomName();
     players[socket.id] = {
       id: socket.id,
       x: pos.x,
@@ -269,14 +289,33 @@ io.on('connection', (socket) => {
       vy: 0,
       color,
       emoji,
+      name,
       score: 0,
       lives: 3,
       invulnUntil: 0,
       alive: true,
     };
-    console.log(`[PLAYER] Player created: ${socket.id}, color=${color}, emoji=${emoji}`);
-    socket.emit('player-info', { color, emoji, gameState });
+    console.log(`[PLAYER] Player created: ${socket.id}, name=${name}, color=${color}, emoji=${emoji}`);
+    socket.emit('player-info', { color, emoji, name, gameState });
     io.to('display').emit('player-joined', players[socket.id]);
+  });
+
+  // Rejoin after elimination (same socket, new life)
+  socket.on('rejoin-player', () => {
+    const existing = players[socket.id];
+    if (!existing || existing.alive) return; // only if eliminated
+    console.log(`[PLAYER] rejoin-player from: ${socket.id}, name=${existing.name}`);
+    const pos = spawnPlayer();
+    existing.x = pos.x;
+    existing.y = pos.y;
+    existing.vx = 0;
+    existing.vy = 0;
+    existing.lives = 3;
+    existing.alive = true;
+    existing.invulnUntil = Date.now() + INVULN_MS;
+    // Keep score, color, emoji, name
+    socket.emit('player-info', { color: existing.color, emoji: existing.emoji, name: existing.name, gameState });
+    io.to('display').emit('player-joined', existing);
   });
 
   // Admin controls
@@ -499,7 +538,7 @@ setInterval(() => {
   for (const id in players) {
     const p = players[id];
     frame[id] = {
-      x: p.x, y: p.y, color: p.color, emoji: p.emoji,
+      x: p.x, y: p.y, color: p.color, emoji: p.emoji, name: p.name,
       score: p.score, lives: p.lives,
       alive: p.alive, invuln: now < p.invulnUntil,
     };
