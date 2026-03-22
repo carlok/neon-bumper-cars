@@ -192,10 +192,20 @@ io.on('connection', (socket) => {
     // Regenerate obstacles based on current real player count
     const humanCount = Object.values(players).filter(p => !p.isAutoplay).length;
     obstacles = generateObstacles(obstacleCount(humanCount));
+    // Respawn all bots and alive players to valid positions in the new layout
     for (const botId in bots) {
       const pos = spawnPosition(obstacles, players, bots, botId);
-      Object.assign(bots[botId], { x: pos.x, y: pos.y });
+      Object.assign(bots[botId], { x: pos.x, y: pos.y, vx: 0, vy: 0 });
     }
+    for (const pid in players) {
+      const p = players[pid];
+      if (!p.alive) continue;
+      const pos = spawnPosition(obstacles, players, bots, pid);
+      Object.assign(p, { x: pos.x, y: pos.y, vx: 0, vy: 0 });
+    }
+    // Invalidate existing coins — they may now overlap new obstacles
+    coins.splice(0);
+    maintainCoins();
     io.to('display').emit('obstacles-reset', obstacles);
     gameState = 'PLAYING';
     io.emit('gameStateChange', gameState);
@@ -217,10 +227,18 @@ io.on('connection', (socket) => {
     obstacles = generateObstacles(obstacleCount(AUTOPLAY_COUNT));
     for (const botId in bots) {
       const pos = spawnPosition(obstacles, players, bots, botId);
-      Object.assign(bots[botId], { x: pos.x, y: pos.y });
+      Object.assign(bots[botId], { x: pos.x, y: pos.y, vx: 0, vy: 0 });
     }
+    for (const pid in players) {
+      const p = players[pid];
+      if (!p.alive) continue;
+      const pos = spawnPosition(obstacles, players, bots, pid);
+      Object.assign(p, { x: pos.x, y: pos.y, vx: 0, vy: 0 });
+    }
+    coins.splice(0);
     io.to('display').emit('obstacles-reset', obstacles);
     startAutoplay();
+    maintainCoins(); // after autoplay bots exist so coinTarget() is correct
     gameState = 'PLAYING';
     io.emit('gameStateChange', gameState);
   });
@@ -404,6 +422,16 @@ setInterval(() => {
         Object.assign(bot, { x: pos.x, y: pos.y, lastX: pos.x, lastY: pos.y, vx: 0, vy: 0, stuckSince: 0, retargetAt: 0 });
         console.log(`[BOT] ${botId} stuck → respawned at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)})`);
       }
+    }
+
+    // Bot–bot separation (prevent AI bots overlapping each other)
+    for (const otherBotId in bots) {
+      if (otherBotId === botId) continue;
+      const other = bots[otherBotId];
+      if (!other.alive) continue;
+      if (!aabbOverlap(bot.x, bot.y, PLAYER_SIZE, PLAYER_SIZE, other.x, other.y, PLAYER_SIZE, PLAYER_SIZE)) continue;
+      bot.vx = -bot.vx; bot.vy = -bot.vy;
+      bot.retargetAt = 0;
     }
 
     // Bot–player collision
