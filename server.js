@@ -77,7 +77,8 @@ const bullets = [];        // { x, y, vx, vy, ownerId, ownerColor, dist }
 
 // ── Obstacle generation ───────────────────────────────────────────────
 const OBSTACLE_TYPES = ['tree', 'stone', 'lake'];
-const OBS_SIZES = { tree: { w: 60, h: 60 }, stone: { w: 70, h: 50 }, lake: { w: 90, h: 60 } };
+const OBS_SIZE = 50; // all obstacles same size (close to PLAYER_SIZE=40)
+const OBS_SIZES = { tree: { w: OBS_SIZE, h: OBS_SIZE }, stone: { w: OBS_SIZE, h: OBS_SIZE }, lake: { w: OBS_SIZE, h: OBS_SIZE } };
 
 function generateObstacles() {
   obstacles = [];
@@ -128,8 +129,9 @@ function spawnCoin() {
 
 // ── Check if a position overlaps any obstacle, player, or bot ────────
 function isPositionBlocked(x, y, size, excludeId) {
+  const pad = 10; // safety margin around obstacles
   for (const ob of obstacles) {
-    if (aabbOverlap(x, y, size, size, ob.x, ob.y, ob.w, ob.h)) return true;
+    if (aabbOverlap(x, y, size, size, ob.x - pad, ob.y - pad, ob.w + pad * 2, ob.h + pad * 2)) return true;
   }
   for (const id in players) {
     if (id === excludeId) continue;
@@ -206,7 +208,7 @@ function randomName() {
 function spawnBots() {
   for (let i = 0; i < BOT_COUNT; i++) {
     const id = `bot-${i}`;
-    const pos = spawnPlayer();
+    const pos = spawnPlayer(id);
     bots[id] = {
       id,
       x: pos.x,
@@ -317,7 +319,7 @@ io.on('connection', (socket) => {
       socket.emit('room-full');
       return;
     }
-    const pos = spawnPlayer();
+    const pos = spawnPlayer(socket.id);
     const color = nextColor();
     const emoji = nextFaceEmoji();
     const name = randomName();
@@ -347,7 +349,7 @@ io.on('connection', (socket) => {
     const existing = players[socket.id];
     if (!existing || existing.alive) return; // only if eliminated
     console.log(`[PLAYER] rejoin-player from: ${socket.id}, name=${existing.name}`);
-    const pos = spawnPlayer();
+    const pos = spawnPlayer(socket.id);
     existing.x = pos.x;
     existing.y = pos.y;
     existing.vx = 0;
@@ -695,7 +697,7 @@ setInterval(() => {
         const bot = bots[botId];
         if (!bot.alive) continue;
         if (aabbOverlap(b.x, b.y, BULLET_SIZE, BULLET_SIZE, bot.x, bot.y, PLAYER_SIZE, PLAYER_SIZE)) {
-          const newPos = spawnPlayer();
+          const newPos = spawnPlayer(botId);
           bot.x = newPos.x;
           bot.y = newPos.y;
           bot.vx = 0;

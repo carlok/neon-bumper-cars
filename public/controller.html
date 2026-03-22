@@ -71,6 +71,9 @@
     border:3px solid #0ff; border-radius:16px; background:transparent; color:#0ff;
     cursor:pointer; text-transform:uppercase; letter-spacing:2px; margin-top:20px;
     animation: pulse 1.5s ease-in-out infinite;">🔄 TAP TO REJOIN</button>
+  <button id="exit-btn" style="position:absolute; top:12px; right:12px; font-size:14px;
+    padding:8px 16px; border:2px solid #666; border-radius:10px; background:transparent;
+    color:#888; cursor:pointer;">✕ EXIT</button>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -369,6 +372,18 @@ rejoinBtn.addEventListener('click', () => {
   lives = 3;
   rejoinBtn.style.display = 'none';
   updateUI();
+});
+
+// ── Exit game ────────────────────────────────────────────────────────
+document.getElementById('exit-btn').addEventListener('click', () => {
+  if (!joined) return;
+  if (socket) socket.disconnect();
+  joined = false;
+  myGameState = 'WAITING';
+  score = 0;
+  lives = 3;
+  gameUI.style.display = 'none';
+  joinScreen.style.display = 'flex';
 });
 
 function flash() {

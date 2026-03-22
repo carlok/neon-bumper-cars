@@ -108,8 +108,19 @@ class GameScene extends Phaser.Scene {
       fontSize: '22px', fontFamily: 'monospace', color: '#ffdd44', align: 'center'
     }).setOrigin(0.5, 0).setDepth(151);
     this.lbRows = [];
+    this.lbBgs = [];
+    const rowH = 34;
+    const rowW = SIDEBAR_W - 20;
     for (let i = 0; i < 10; i++) {
-      const t = this.add.text(SIDEBAR_X + 14, 60 + i * 34, '', {
+      const ry = 60 + i * rowH;
+      // Button-style background with rounded look
+      const bg = this.add.rectangle(SIDEBAR_X + 10 + rowW / 2, ry + rowH / 2 - 2, rowW, rowH - 4, 0x4a3660)
+        .setDepth(150).setAlpha(0);
+      // Highlight edge (top lighter)
+      const highlight = this.add.rectangle(SIDEBAR_X + 10 + rowW / 2, ry + 2, rowW, 2, 0x7755aa)
+        .setDepth(150).setAlpha(0);
+      this.lbBgs.push({ bg, highlight });
+      const t = this.add.text(SIDEBAR_X + 18, ry, '', {
         fontSize: '14px', fontFamily: 'monospace', color: '#ddd'
       }).setDepth(151);
       this.lbRows.push(t);
@@ -276,13 +287,16 @@ class GameScene extends Phaser.Scene {
     // Remove old bullet graphics
     for (const bg of this.bulletGfx) bg.destroy();
     this.bulletGfx = [];
-    // Draw current bullets
+    // Draw current bullets (bright, visible projectiles)
     for (const b of serverBullets) {
       const color = Phaser.Display.Color.HexStringToColor(b.ownerColor || '#ff0').color;
-      const circle = this.add.circle(b.x + 5, b.y + 5, 5, color).setDepth(20).setAlpha(0.9);
-      // Glow trail
-      const trail = this.add.circle(b.x + 5, b.y + 5, 8, color).setDepth(19).setAlpha(0.3);
-      this.bulletGfx.push(circle, trail);
+      // Core bullet
+      const core = this.add.circle(b.x + 5, b.y + 5, 7, 0xffffff).setDepth(21).setAlpha(1);
+      // Colored ring
+      const ring = this.add.circle(b.x + 5, b.y + 5, 10, color).setDepth(20).setAlpha(0.8);
+      // Outer glow
+      const glow = this.add.circle(b.x + 5, b.y + 5, 16, color).setDepth(19).setAlpha(0.25);
+      this.bulletGfx.push(core, ring, glow);
     }
 
     // Leaderboard with names (exclude bots)
@@ -297,8 +311,12 @@ class GameScene extends Phaser.Scene {
         const name = p.name || '???';
         this.lbRows[i].setText(`${i + 1}. ${p.emoji || '■'} ${name} ${p.score}p ${hearts}`);
         this.lbRows[i].setColor(p.color);
+        this.lbBgs[i].bg.setAlpha(i === 0 ? 0.9 : 0.6);
+        this.lbBgs[i].highlight.setAlpha(i === 0 ? 0.8 : 0.4);
       } else {
         this.lbRows[i].setText('');
+        this.lbBgs[i].bg.setAlpha(0);
+        this.lbBgs[i].highlight.setAlpha(0);
       }
     }
   }
