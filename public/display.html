@@ -58,10 +58,10 @@ class GameScene extends Phaser.Scene {
     const SIDEBAR_X = GAME_W; // sidebar starts here
 
     // ── Sidebar background ──────────────────────────────────────────
-    this.add.rectangle(SIDEBAR_X + SIDEBAR_W / 2, 540, SIDEBAR_W, 1080, 0x2a2520)
+    this.add.rectangle(SIDEBAR_X + SIDEBAR_W / 2, 540, SIDEBAR_W, 1080, 0x3b2d4a)
       .setDepth(140);
     // Divider line
-    this.add.rectangle(SIDEBAR_X, 540, 3, 1080, 0x444444).setDepth(141);
+    this.add.rectangle(SIDEBAR_X, 540, 3, 1080, 0x6644aa).setDepth(141);
 
     // ── Terrain background (game area only) ─────────────────────────
     const terrainTiles = ['░', '▒', '·', '∙', '╌', '░'];
@@ -105,7 +105,7 @@ class GameScene extends Phaser.Scene {
     // ── Sidebar: Leaderboard ────────────────────────────────────────
     const lbCenterX = SIDEBAR_X + SIDEBAR_W / 2;
     this.lbTitle = this.add.text(lbCenterX, 24, '🏆 LEADERBOARD', {
-      fontSize: '20px', fontFamily: 'monospace', color: '#ffd700', align: 'center'
+      fontSize: '22px', fontFamily: 'monospace', color: '#ffdd44', align: 'center'
     }).setOrigin(0.5, 0).setDepth(151);
     this.lbRows = [];
     for (let i = 0; i < 10; i++) {
@@ -123,15 +123,15 @@ class GameScene extends Phaser.Scene {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.textures.addImage('qr', img);
-      this.qrSprite = this.add.image(lbCenterX, 520, 'qr')
-        .setDisplaySize(180, 180).setDepth(152).setAlpha(0.9);
+      this.qrSprite = this.add.image(lbCenterX, 920, 'qr')
+        .setDisplaySize(200, 200).setDepth(152).setAlpha(0.95);
       this.qrLoaded = true;
     };
     img.src = qrUrl;
 
     // "SCAN TO PLAY" text
-    this.add.text(lbCenterX, 440, '📱 SCAN TO PLAY', {
-      fontSize: '16px', fontFamily: 'monospace', color: '#aaa', align: 'center'
+    this.add.text(lbCenterX, 800, '📱 SCAN TO PLAY', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#ddb0ff', align: 'center'
     }).setOrigin(0.5, 0).setDepth(152);
 
     // Waiting text (centered in game area)
