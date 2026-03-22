@@ -112,7 +112,7 @@ io.on('connection', (socket) => {
     players[socket.id] = {
       id: socket.id, x: pos.x, y: pos.y, vx: 0, vy: 0,
       color, emoji, name, score: 0, lives: 3,
-      invulnUntil: 0, alive: true, facing: 'up',
+      invulnUntil: Date.now() + INVULN_MS, alive: true, facing: 'up',
       lastShotAt: 0, shotsLeft: MAX_SHOTS,
     };
     console.log(`[PLAYER] Created: ${socket.id}, name=${name}, color=${color}`);

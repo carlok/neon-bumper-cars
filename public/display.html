@@ -33,8 +33,7 @@ socket.on('frame', (data) => {
   serverCoin = data.coin;
   serverBullets = data.bullets || [];
 });
-socket.on('coin-spawned', (c) => { serverCoin = c; coinIsNew = true; });
-let coinIsNew = true; // glow on first coin too
+socket.on('coin-spawned', (c) => { serverCoin = c; });
 
 // Events queued for Phaser scene
 const eventQueue = [];
@@ -100,7 +99,6 @@ class GameScene extends Phaser.Scene {
 
     // Coin text (emoji updated dynamically from server)
     this.coinText = this.add.text(0, 0, '🍎', { fontSize: '36px' }).setOrigin(0.5).setDepth(5);
-    this.coinGlowTime = 0; // for glow animation on new coin
 
     // ── Sidebar: Leaderboard ────────────────────────────────────────
     const lbCenterX = SIDEBAR_X + SIDEBAR_W / 2;
@@ -159,14 +157,14 @@ class GameScene extends Phaser.Scene {
     pg.destroy();
 
     // Project name + GitHub + copyright + version (under QR in sidebar)
-    this.add.text(lbCenterX, 1026, '⚡ Neon Bumper Cars', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#cc99ff', align: 'center'
+    this.add.text(lbCenterX, 1030, '⚡ Neon Bumper Cars', {
+      fontSize: '15px', fontFamily: 'monospace', color: '#cc99ff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 1044, '🐙 github.com/carlok/neon-bumper-cars', {
-      fontSize: '10px', fontFamily: 'monospace', color: '#8855bb', align: 'center'
+    this.add.text(lbCenterX, 1050, '🐙 carlok/neon-bumper-cars', {
+      fontSize: '13px', fontFamily: 'monospace', color: '#8855bb', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 1062, '© 2026 carlok  |  v1.1.5', {
-      fontSize: '11px', fontFamily: 'monospace', color: '#664488', align: 'center'
+    this.add.text(lbCenterX, 1068, '© 2026 carlok  |  v1.1.6', {
+      fontSize: '13px', fontFamily: 'monospace', color: '#664488', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
     this.obstaclesCreated = false;
@@ -279,22 +277,11 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Coin with glow effect on spawn
+    // Coin — permanent gentle pulse so it is always easy to spot
     if (serverCoin) {
       if (serverCoin.emoji) this.coinText.setText(serverCoin.emoji);
       this.coinText.setPosition(serverCoin.x + 15, serverCoin.y + 15).setVisible(true);
-      if (coinIsNew) {
-        coinIsNew = false;
-        this.coinGlowTime = this.time.now;
-      }
-      // Pulsing glow for ~2 seconds after spawn
-      const glowAge = this.time.now - this.coinGlowTime;
-      if (glowAge < 2000) {
-        const pulse = 1.0 + 0.5 * Math.sin(glowAge / 80);
-        this.coinText.setScale(pulse);
-      } else {
-        this.coinText.setScale(1);
-      }
+      this.coinText.setScale(1.0 + 0.28 * Math.sin(this.time.now / 220));
     } else {
       this.coinText.setVisible(false);
     }
@@ -431,7 +418,7 @@ const config = {
   type: Phaser.WEBGL,
   width: 1920,
   height: 1080,
-  backgroundColor: '#f5f0d0',
+  backgroundColor: '#111111',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
