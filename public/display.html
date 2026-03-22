@@ -66,15 +66,18 @@ class GameScene extends Phaser.Scene {
     // ── Terrain background (game area only) ─────────────────────────
     const terrainTiles = ['░', '▒', '·', '∙', '╌', '░'];
     const terrainColors = ['#e0d8a8', '#d8d0a0', '#e5ddb0', '#ddd5a5', '#e2daa8', '#d5cd98'];
-    const tileSize = 80;
-    for (let tx = 0; tx < GAME_W; tx += tileSize) {
-      for (let ty = 0; ty < 1080; ty += tileSize) {
-        const idx = ((tx / tileSize) + (ty / tileSize)) % terrainTiles.length;
+    const tileW = 80;   // 1600 / 80 = 20 columns (exact)
+    const tileH = 72;   // 1080 / 72 = 15 rows (exact)
+    for (let tx = 0; tx < GAME_W; tx += tileW) {
+      for (let ty = 0; ty < 1080; ty += tileH) {
+        const col = tx / tileW;
+        const row = ty / tileH;
+        const idx = (col + row) % terrainTiles.length;
         const jitter = ((tx * 7 + ty * 13) % 6);
         const tile = terrainTiles[(idx + jitter) % terrainTiles.length];
         const color = terrainColors[(idx + jitter) % terrainColors.length];
-        this.add.text(tx + tileSize / 2, ty + tileSize / 2, tile, {
-          fontSize: '48px', fontFamily: 'monospace', color: color
+        this.add.text(tx + tileW / 2, ty + tileH / 2, tile, {
+          fontSize: '44px', fontFamily: 'monospace', color: color
         }).setOrigin(0.5).setDepth(0).setAlpha(0.5);
       }
     }
