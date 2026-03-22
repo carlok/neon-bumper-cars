@@ -151,15 +151,16 @@ class GameScene extends Phaser.Scene {
           .setOrigin(0.5).setDepth(10);
         this.playerGfx[id] = g;
 
-        // Particle trail
+        // Particle trail (red menacing trail for bots)
+        const trailTint = sp.isBot ? 0xff0000 : Phaser.Display.Color.HexStringToColor(sp.color).color;
         const emitter = this.add.particles(0, 0, 'particle', {
-          speed: { min: 10, max: 30 },
-          scale: { start: 0.8, end: 0 },
-          alpha: { start: 0.6, end: 0 },
-          lifespan: 400,
-          frequency: 50,
+          speed: { min: 10, max: sp.isBot ? 50 : 30 },
+          scale: { start: sp.isBot ? 1.2 : 0.8, end: 0 },
+          alpha: { start: sp.isBot ? 0.8 : 0.6, end: 0 },
+          lifespan: sp.isBot ? 600 : 400,
+          frequency: sp.isBot ? 30 : 50,
           blendMode: Phaser.BlendModes.ADD,
-          tint: Phaser.Display.Color.HexStringToColor(sp.color).color,
+          tint: trailTint,
         });
         emitter.setDepth(9);
         this.trailEmitters[id] = emitter;
@@ -201,9 +202,9 @@ class GameScene extends Phaser.Scene {
       this.coinText.setVisible(false);
     }
 
-    // Leaderboard
+    // Leaderboard (exclude bots)
     const sorted = Object.values(serverPlayers)
-      .filter(p => p.alive)
+      .filter(p => p.alive && !p.isBot)
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
     for (let i = 0; i < 10; i++) {

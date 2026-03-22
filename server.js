@@ -29,11 +29,24 @@ const NEON_COLORS = [
 ];
 let colorIndex = 0;
 
-// ── Face emoji pool ──────────────────────────────────────────────────
-const FACE_EMOJIS = [
+// ── Player emoji pool (faces, animals, vehicles) ────────────────────
+const PLAYER_EMOJIS = [
+  // Human faces
   '😀', '😎', '🤩', '🥳', '😜', '🤠', '🧐', '😏', '🤗', '🥸',
-  '😺', '🤖', '👽', '🎃', '👻', '🦊', '🐸', '🐵', '🦁', '🐼'
+  '👶', '👧', '👦', '👩', '👨', '👴', '👵', '🧔', '👸', '🤴',
+  // Animals
+  '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐸', '🐵',
+  '🦁', '🐯', '🐮', '🐷', '🐔', '🦄', '🐙', '🦋', '🐢', '🦈',
+  // Vehicles
+  '🚗', '🏎️', '🚕', '🚙', '🏍️', '🚲', '🛵', '🚁', '🚀', '🛸',
+  '🚂', '🚤', '🛻', '🚜', '🛺'
 ];
+
+// ── Bot emoji pool ──────────────────────────────────────────────────
+const BOT_EMOJIS = ['🤖', '👾'];
+const BOT_COUNT = 2;
+const BOT_SPEED = 3;  // slightly slower than players
+const BOT_INVULN_MS = 3000;
 
 // ── Coin emoji pool (vegan food & drinks) ────────────────────────────
 const COIN_EMOJIS = [
@@ -44,6 +57,7 @@ const COIN_EMOJIS = [
 // ── State ──────────────────────────────────────────────────────────────
 let gameState = 'WAITING'; // WAITING | PLAYING | STOPPED
 const players = {};        // socketId -> player
+const bots = {};           // botId -> bot object
 let obstacles = [];        // { x, y, w, h, type }
 let coin = null;           // { x, y }
 
@@ -112,16 +126,110 @@ function nextColor() {
 }
 
 function nextFaceEmoji() {
-  return FACE_EMOJIS[Math.floor(Math.random() * FACE_EMOJIS.length)];
+  return PLAYER_EMOJIS[Math.floor(Math.random() * PLAYER_EMOJIS.length)];
 }
 
 function randomCoinEmoji() {
   return COIN_EMOJIS[Math.floor(Math.random() * COIN_EMOJIS.length)];
 }
 
+// ── Bot helpers ──────────────────────────────────────────────────────
+function spawnBots() {
+  for (let i = 0; i < BOT_COUNT; i++) {
+    const id = `bot-${i}`;
+    const pos = spawnPlayer();
+    bots[id] = {
+      id,
+      x: pos.x,
+      y: pos.y,
+      vx: 0,
+      vy: 0,
+      color: '#FF0000',
+      emoji: BOT_EMOJIS[i % BOT_EMOJIS.length],
+      isBot: true,
+      invulnUntil: 0,
+      alive: true,
+      retargetAt: 0,  // when to pick a new direction
+    };
+    console.log(`[BOT] Spawned bot ${id} at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) emoji=${bots[id].emoji}`);
+  }
+}
+
+function updateBotAI(bot, now) {
+  // Find nearest alive player
+  let nearest = null;
+  let nearestDist = Infinity;
+  for (const id in players) {
+    const p = players[id];
+    if (!p.alive) continue;
+    const dx = p.x - bot.x;
+    const dy = p.y - bot.y;
+    const dist = Math.abs(dx) + Math.abs(dy); // Manhattan distance
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = p;
+    }
+  }
+
+  // Retarget every ~30 ticks (0.5s) or if no velocity
+  if (!nearest || now < bot.retargetAt) return;
+  bot.retargetAt = now + 500;
+
+  const dx = nearest.x - bot.x;
+  const dy = nearest.y - bot.y;
+
+  // Chase along dominant axis (Manhattan movement)
+  let newVx = 0, newVy = 0;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    newVx = dx > 0 ? BOT_SPEED : -BOT_SPEED;
+  } else {
+    newVy = dy > 0 ? BOT_SPEED : -BOT_SPEED;
+  }
+
+  // Check if new direction is blocked by obstacle
+  const testX = bot.x + newVx;
+  const testY = bot.y + newVy;
+  let blocked = false;
+  for (const ob of obstacles) {
+    if (aabbOverlap(testX, testY, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+      blocked = true;
+      break;
+    }
+  }
+  if (!blocked) {
+    bot.vx = newVx;
+    bot.vy = newVy;
+  } else {
+    // Try the other axis
+    newVx = 0; newVy = 0;
+    if (Math.abs(dx) <= Math.abs(dy)) {
+      newVx = dx > 0 ? BOT_SPEED : -BOT_SPEED;
+    } else {
+      newVy = dy > 0 ? BOT_SPEED : -BOT_SPEED;
+    }
+    const testX2 = bot.x + newVx;
+    const testY2 = bot.y + newVy;
+    let blocked2 = false;
+    for (const ob of obstacles) {
+      if (aabbOverlap(testX2, testY2, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+        blocked2 = true;
+        break;
+      }
+    }
+    if (!blocked2) {
+      bot.vx = newVx;
+      bot.vy = newVy;
+    } else {
+      bot.vx = 0;
+      bot.vy = 0;
+    }
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────
 generateObstacles();
 spawnCoin();
+spawnBots();
 
 // ── Socket.IO ─────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
@@ -131,7 +239,7 @@ io.on('connection', (socket) => {
   socket.on('join-display', () => {
     console.log(`[DISPLAY] Display joined: ${socket.id}`);
     socket.join('display');
-    socket.emit('init', { obstacles, gameState, coin });
+    socket.emit('init', { obstacles, gameState, coin, bots });
   });
 
   socket.on('join-admin', () => {
@@ -309,6 +417,75 @@ setInterval(() => {
     }
   }
 
+  // ── Bot AI + movement ──────────────────────────────────────────────
+  for (const botId in bots) {
+    const bot = bots[botId];
+    if (!bot.alive) continue;
+
+    updateBotAI(bot, now);
+
+    // Move bot
+    let bnx = bot.x + bot.vx;
+    let bny = bot.y + bot.vy;
+
+    // Wrap around
+    if (bnx < -PLAYER_SIZE) bnx = ARENA_W;
+    if (bnx > ARENA_W) bnx = -PLAYER_SIZE;
+    if (bny < -PLAYER_SIZE) bny = ARENA_H;
+    if (bny > ARENA_H) bny = -PLAYER_SIZE;
+
+    // Obstacle collision
+    let botHitObs = false;
+    for (const ob of obstacles) {
+      if (aabbOverlap(bnx, bny, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+        botHitObs = true;
+        break;
+      }
+    }
+    if (botHitObs) {
+      bot.vx = 0;
+      bot.vy = 0;
+      bot.retargetAt = 0; // force retarget next tick
+    } else {
+      bot.x = bnx;
+      bot.y = bny;
+    }
+
+    // Bot-player collision: bot chases and damages players
+    for (const pid in players) {
+      const p = players[pid];
+      if (!p.alive) continue;
+      if (now < p.invulnUntil) continue;
+      if (aabbOverlap(bot.x, bot.y, PLAYER_SIZE, PLAYER_SIZE, p.x, p.y, PLAYER_SIZE, PLAYER_SIZE)) {
+        // Damage the player
+        p.lives--;
+        p.invulnUntil = now + INVULN_MS;
+
+        // Knock player away from bot
+        const kdx = p.x - bot.x;
+        const kdy = p.y - bot.y;
+        if (Math.abs(kdx) >= Math.abs(kdy)) {
+          p.vx = kdx >= 0 ? PLAYER_SPEED : -PLAYER_SPEED;
+          p.vy = 0;
+        } else {
+          p.vy = kdy >= 0 ? PLAYER_SPEED : -PLAYER_SPEED;
+          p.vx = 0;
+        }
+
+        const sock = io.sockets.sockets.get(pid);
+        if (sock) sock.emit('collision', { lives: p.lives });
+        io.to('display').emit('bump', { a: botId, b: pid, ax: bot.x, ay: bot.y, bx: p.x, by: p.y });
+
+        // Elimination check
+        if (p.lives <= 0) {
+          p.alive = false;
+          if (sock) sock.emit('eliminated');
+          io.to('display').emit('player-eliminated', pid);
+        }
+      }
+    }
+  }
+
   // Broadcast frame
   const frame = {};
   for (const id in players) {
@@ -317,6 +494,15 @@ setInterval(() => {
       x: p.x, y: p.y, color: p.color, emoji: p.emoji,
       score: p.score, lives: p.lives,
       alive: p.alive, invuln: now < p.invulnUntil,
+    };
+  }
+  // Include bots in the frame as "players" so the display renders them
+  for (const botId in bots) {
+    const bot = bots[botId];
+    frame[botId] = {
+      x: bot.x, y: bot.y, color: bot.color, emoji: bot.emoji,
+      score: 0, lives: 99,
+      alive: bot.alive, invuln: false, isBot: true,
     };
   }
   io.to('display').emit('frame', { players: frame, coin });
