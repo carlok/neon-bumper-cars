@@ -4,16 +4,16 @@ Multiplayer WebSocket party game for live events. One shared display (projector/
 
 ## Architecture
 
-```
-┌──────────────┐   WebSocket    ┌──────────┐   WebSocket    ┌─────────────┐
-│  controller   │◄──────────────►│  server  │◄──────────────►│   display    │
-│  (phones)     │   swipe input  │  Node.js │   60fps frame  │  (Phaser 3)  │
-└──────────────┘                └─────┬────┘                └─────────────┘
-                                      │
-                                ┌─────┴────┐
-                                │  admin    │
-                                │  panel    │
-                                └──────────┘
+```mermaid
+graph TD
+    phones["📱 Controller\n(phones — swipe/tap)"]
+    server["⚡ Server\n(Node.js + Socket.IO)"]
+    display["🖥️ Display\n(Phaser 3 — projector/TV)"]
+    admin["⚙️ Admin panel\n(start / stop)"]
+
+    phones <-->|"swipe input"| server
+    server <-->|"60 fps frames"| display
+    admin -->|"game control"| server
 ```
 
 **Endpoints:**
@@ -105,4 +105,4 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 
 ## License
 
-MIT
+MIT — © 2026 carlok

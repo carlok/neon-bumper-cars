@@ -190,12 +190,11 @@ describe('findSafeSpot', () => {
     expect(pos.y).toBeLessThan(ARENA_H - 100);
   });
 
-  test('falls back gracefully when arena is fully blocked', () => {
-    // Huge obstacles cover everything — should still return something
-    const bigObstacles = [{ x: 0, y: 0, w: ARENA_W, h: ARENA_H }];
+  test('returns last-resort {100,100} when arena is fully blocked', () => {
+    // Obstacle larger than arena — every grid position is blocked → exercises fallback line
+    const bigObstacles = [{ x: -50, y: -50, w: ARENA_W + 100, h: ARENA_H + 100 }];
     const pos = findSafeSpot(PLAYER_SIZE, bigObstacles, {}, {}, null);
-    expect(typeof pos.x).toBe('number');
-    expect(typeof pos.y).toBe('number');
+    expect(pos).toEqual({ x: 100, y: 100 });
   });
 });
 
