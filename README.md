@@ -1,6 +1,6 @@
 # ⚡ Neon Survival Bumper Cars
 
-Multiplayer WebSocket party game. One shared display (projector/TV), players join from their phones via QR code, an admin controls the match.
+Multiplayer WebSocket party game for live events. One shared display (projector/TV), players join from their phones via QR code, an admin controls the match.
 
 ## Architecture
 
@@ -24,7 +24,37 @@ Multiplayer WebSocket party game. One shared display (projector/TV), players joi
 | `/controller.html` | Mobile controller — scanned via QR |
 | `/admin.html` | Start/stop the game (password: `demo123`) |
 
-## Running with Podman
+## Development (live-reload, no rebuilds)
+
+Edit `server.js` or anything in `public/` and changes are picked up instantly — source files are mounted as volumes, nodemon restarts the server automatically.
+
+```bash
+# First time only: build the dev image
+docker compose --profile dev build
+
+# Start dev server (live-reload)
+docker compose --profile dev up dev
+
+# That's it — edit files, save, browser auto-reconnects
+```
+
+Or without Docker:
+
+```bash
+npm install
+npm run dev
+```
+
+## Production
+
+### Docker Compose
+
+```bash
+docker compose up -d neon-bumper-cars
+docker compose logs -f neon-bumper-cars
+```
+
+### Podman
 
 ```bash
 # Build
@@ -48,8 +78,6 @@ podman rm neon-bumper-cars
 
 ### Persist across reboots (systemd)
 
-Generate a user-level systemd unit so the container survives reboots:
-
 ```bash
 podman generate systemd --name neon-bumper-cars --new --files
 mkdir -p ~/.config/systemd/user
@@ -59,65 +87,36 @@ systemctl --user enable --now container-neon-bumper-cars
 loginctl enable-linger $(whoami)
 ```
 
-## Local Testing with HTTPS (Cloudflare Tunnel)
+## Local HTTPS (Cloudflare Tunnel)
 
-Mobile haptics (`navigator.vibrate`) and `AudioContext` auto-play require a **secure context** (HTTPS). Over plain `http://192.168.x.x:3000` the browser silently ignores them.
-
-Cloudflare Tunnel gives you a public HTTPS URL pointing at your local machine — real trusted cert, no config, no account needed.
-
-### 1. Install
+Mobile haptics and AudioContext require HTTPS. Cloudflare Tunnel gives you a public HTTPS URL — real cert, no config, no account needed.
 
 ```bash
 brew install cloudflared
-```
-
-### 2. Start
-
-```bash
-podman run -d --name neon-bumper-cars -p 3000:3000 neon-bumper-cars
 cloudflared tunnel --url localhost:3000
 ```
 
-It prints a URL like `https://something-random.trycloudflare.com`. Open it on your phone — haptics, AudioContext, fullscreen all work immediately. No LAN IP, no cert install.
-
-The QR code on the display picks it up automatically since it reads `window.location.origin`.
-
-### 3. Stop
-
-```bash
-# Ctrl-C on cloudflared
-podman stop neon-bumper-cars
-```
-
-> **Note:** The random URL changes each time you restart `cloudflared`. For a stable subdomain, create a free Cloudflare account and configure a named tunnel.
-
-## Production (VPS + Cloudflare Tunnel)
-
-On a VPS, use a named tunnel for a permanent HTTPS endpoint with your own domain — no exposed ports, no reverse proxy, no cert management:
-
-```bash
-cloudflared tunnel login
-cloudflared tunnel create bumper-cars
-cloudflared tunnel route dns bumper-cars bumper.yourdomain.com
-cloudflared tunnel --name bumper-cars --url localhost:3000
-```
-
-Alternatively, run `cloudflared` as a systemd service alongside the Podman container for a fully hands-off setup.
+Prints a URL like `https://something-random.trycloudflare.com`. The QR on the display adapts automatically via `window.location.origin`.
 
 ## Gameplay
 
 1. Open `/display.html` on a projector or large screen.
-2. Players scan the QR code shown on-screen (or navigate to `/controller.html`).
+2. Players scan the QR code (or navigate to `/controller.html`).
 3. Admin opens `/admin.html`, enters password `demo123`, hits **Start Game**.
-4. Players swipe to move (Manhattan 4-way). Collect ⚡ coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total.
-5. Last player standing wins — or highest score when admin stops the game.
+4. Players swipe to move (Manhattan 4-way). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total.
+5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact!
+6. Last player standing wins — or highest score when admin stops the game.
 
-## Tech Notes
+## Features
 
-- **Zero external assets.** Obstacles are emoji text objects (🌲🪨💧), audio is synthesized via Web Audio API `OscillatorNode`, particles are Phaser-generated textures.
-- **60 FPS server loop** with AABB collision detection, 2-second invulnerability cooldown after bumps.
-- **Wrap-around arena** (1920×1080) — exit one side, appear on the other.
-- The QR code is generated dynamically from `window.location.origin`, so it works on any domain/port without config changes.
+- **Emoji players** — random people, animals, and vehicles (curated for projector visibility)
+- **Robot bots** — 2 AI chasers (🤖👾) with red particle trails that hunt players
+- **Food/drink coins** — vegan food and drinks as collectibles
+- **Terrain background** — lightweight tiled ground texture with faint emoji patches
+- **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
+- **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
+- **Wrap-around arena** (1920×1080) — exit one side, appear on the other
+- **Debug logging** — server and controller log join flow for troubleshooting
 
 ## License
 

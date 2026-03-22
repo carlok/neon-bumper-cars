@@ -1,4 +1,5 @@
 services:
+  # ── Production ────────────────────────────────────────────────────
   neon-bumper-cars:
     build: .
     container_name: neon-bumper-cars
@@ -12,3 +13,19 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # ── Development (live-reload, no rebuild needed) ──────────────────
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: neon-bumper-cars-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    volumes:
+      - ./server.js:/app/server.js
+      - ./public:/app/public
+    profiles:
+      - dev
