@@ -87,8 +87,8 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 1. Open `/display.html` on a projector or large screen.
 2. Players scan the QR code (or navigate to `/controller.html`).
 3. Admin opens `/admin.html`, enters password `demo123`, hits **Start Game**.
-4. Players swipe to move (Manhattan 4-way). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total.
-5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact!
+4. Players swipe to move (Manhattan 4-way). **Tap to shoot** in your facing direction! Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total.
+5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact! Shoot them to teleport them away.
 6. Last player standing wins — or highest score when admin stops the game.
 
 ## Features

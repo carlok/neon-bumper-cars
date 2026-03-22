@@ -97,6 +97,11 @@ class SFX {
     this._play(880, 'square', 0.08, 0.15);
   }
 
+  shoot() {
+    this._play(1200, 'square', 0.06, 0.2);
+    this._play(900, 'sawtooth', 0.1, 0.15);
+  }
+
   coin() {
     const t = this.ctx.currentTime;
     const notes = [660, 880, 1100, 1320];
@@ -174,6 +179,7 @@ class SFX {
 
 // ── Vibration patterns (distinct per action) ────────────────────────
 const VIBE = {
+  shoot:     [20, 10, 40],               // quick snap
   swipe:     15,                         // tiny tick
   coin:      [30, 20, 30],               // double-tap reward
   collision: [80, 30, 150],              // bump then grind
@@ -278,6 +284,11 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
     socket.on('blocked', () => {
       sfx.blocked();
       vibe(VIBE.blocked);
+    });
+
+    socket.on('shot-fired-ack', () => {
+      sfx.shoot();
+      vibe(VIBE.shoot);
     });
 
     socket.on('eliminated', () => {
@@ -392,7 +403,12 @@ document.addEventListener('touchend', (e) => {
   const dx = e.changedTouches[0].clientX - touchStartX;
   const dy = e.changedTouches[0].clientY - touchStartY;
   const minSwipe = 20;
-  if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) return;
+
+  // Tap (no significant movement) → shoot
+  if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) {
+    socket.emit('shoot');
+    return;
+  }
 
   let dir;
   if (Math.abs(dx) > Math.abs(dy)) {

@@ -27,9 +27,11 @@ socket.on('init', (data) => {
   serverCoin = data.coin;
 });
 socket.on('gameStateChange', (s) => { gameState = s; });
+let serverBullets = [];
 socket.on('frame', (data) => {
   serverPlayers = data.players;
   serverCoin = data.coin;
+  serverBullets = data.bullets || [];
 });
 socket.on('coin-spawned', (c) => { serverCoin = c; coinIsNew = true; });
 let coinIsNew = true; // glow on first coin too
@@ -39,6 +41,8 @@ const eventQueue = [];
 socket.on('coin-eaten', (d) => eventQueue.push({ type:'coin-eaten', ...d }));
 socket.on('bump', (d) => eventQueue.push({ type:'bump', ...d }));
 socket.on('player-eliminated', (id) => eventQueue.push({ type:'eliminated', id }));
+socket.on('shot-hit', (d) => eventQueue.push({ type:'shot-hit', ...d }));
+socket.on('shot-fired', (d) => eventQueue.push({ type:'shot-fired', ...d }));
 
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -46,6 +50,7 @@ class GameScene extends Phaser.Scene {
   create() {
     this.playerGfx = {};
     this.trailEmitters = {};
+    this.bulletGfx = [];  // array of Phaser graphics for bullets
 
     // ── Layout constants ──────────────────────────────────────────────
     const GAME_W = 1600;  // game area width (matches server ARENA_W)
@@ -177,6 +182,8 @@ class GameScene extends Phaser.Scene {
       if (ev.type === 'coin-eaten') this.doCoinBurst(ev.cx, ev.cy);
       if (ev.type === 'bump') this.doBump(ev);
       if (ev.type === 'eliminated') this.doEliminated(ev.id);
+      if (ev.type === 'shot-hit') this.doShotHit(ev);
+      if (ev.type === 'shot-fired') this.doShotFlash(ev);
     }
 
     // Update / create player graphics
@@ -262,6 +269,19 @@ class GameScene extends Phaser.Scene {
       this.coinText.setVisible(false);
     }
 
+    // ── Bullets ──────────────────────────────────────────────────────
+    // Remove old bullet graphics
+    for (const bg of this.bulletGfx) bg.destroy();
+    this.bulletGfx = [];
+    // Draw current bullets
+    for (const b of serverBullets) {
+      const color = Phaser.Display.Color.HexStringToColor(b.ownerColor || '#ff0').color;
+      const circle = this.add.circle(b.x + 5, b.y + 5, 5, color).setDepth(20).setAlpha(0.9);
+      // Glow trail
+      const trail = this.add.circle(b.x + 5, b.y + 5, 8, color).setDepth(19).setAlpha(0.3);
+      this.bulletGfx.push(circle, trail);
+    }
+
     // Leaderboard with names (exclude bots)
     const sorted = Object.values(serverPlayers)
       .filter(p => p.alive && !p.isBot)
@@ -330,6 +350,43 @@ class GameScene extends Phaser.Scene {
       burst.explode(40);
       this.time.delayedCall(900, () => burst.destroy());
     }
+  }
+
+  doShotFlash(ev) {
+    // Muzzle flash at shot origin
+    const flash = this.add.circle(ev.x + 5, ev.y + 5, 12,
+      Phaser.Display.Color.HexStringToColor(ev.color || '#fff').color)
+      .setDepth(55).setAlpha(0.8);
+    this.tweens.add({
+      targets: flash, alpha: 0, scale: 2, duration: 150,
+      onComplete: () => flash.destroy()
+    });
+  }
+
+  doShotHit(ev) {
+    if (ev.type === 'obstacle') return; // no visual for hitting static objects
+
+    // Glow burst when hitting player or bot
+    const tint = ev.type === 'bot' ? 0x00ffff : 0xff3366;
+    const burst = this.add.particles(ev.x, ev.y, 'particle', {
+      speed: { min: 60, max: 180 },
+      scale: { start: 1.5, end: 0 },
+      lifespan: 400,
+      quantity: 20,
+      tint: tint,
+      blendMode: Phaser.BlendModes.ADD,
+      emitting: false,
+    });
+    burst.setDepth(55);
+    burst.explode(20);
+    this.time.delayedCall(500, () => burst.destroy());
+
+    // Flash ring
+    const ring = this.add.circle(ev.x, ev.y, 8, tint).setDepth(56).setAlpha(0.9);
+    this.tweens.add({
+      targets: ring, alpha: 0, scale: 5, duration: 300,
+      onComplete: () => ring.destroy()
+    });
   }
 }
 

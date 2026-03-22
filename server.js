@@ -20,6 +20,10 @@ const INVULN_MS = 2000;
 const ADMIN_PASSWORD = 'demo123';
 const TICK_RATE = 60;
 const MAX_PLAYERS = 32;
+const BULLET_SPEED = 10;
+const BULLET_SIZE = 10;
+const BULLET_MAX_DIST = 600;  // max travel distance before disappearing
+const SHOOT_COOLDOWN_MS = 800;
 
 // ── Neon palette ───────────────────────────────────────────────────────
 const NEON_COLORS = [
@@ -69,6 +73,7 @@ const players = {};        // socketId -> player
 const bots = {};           // botId -> bot object
 let obstacles = [];        // { x, y, w, h, type }
 let coin = null;           // { x, y }
+const bullets = [];        // { x, y, vx, vy, ownerId, ownerColor, dist }
 
 // ── Obstacle generation ───────────────────────────────────────────────
 const OBSTACLE_TYPES = ['tree', 'stone', 'lake'];
@@ -302,6 +307,8 @@ io.on('connection', (socket) => {
       lives: 3,
       invulnUntil: 0,
       alive: true,
+      facing: 'up',
+      lastShotAt: 0,
     };
     console.log(`[PLAYER] Player created: ${socket.id}, name=${name}, color=${color}, emoji=${emoji}`);
     socket.emit('player-info', { color, emoji, name, gameState });
@@ -351,6 +358,30 @@ io.on('connection', (socket) => {
     if (!d) return;
     p.vx = d[0] * PLAYER_SPEED;
     p.vy = d[1] * PLAYER_SPEED;
+    p.facing = dir;
+  });
+
+  // Player shoot — single tap fires in facing direction
+  socket.on('shoot', () => {
+    const p = players[socket.id];
+    if (!p || !p.alive || gameState !== 'PLAYING') return;
+    const now = Date.now();
+    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) return;
+    p.lastShotAt = now;
+    const facingDirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+    const fd = facingDirs[p.facing] || [0, -1];
+    const bullet = {
+      x: p.x + PLAYER_SIZE / 2 - BULLET_SIZE / 2,
+      y: p.y + PLAYER_SIZE / 2 - BULLET_SIZE / 2,
+      vx: fd[0] * BULLET_SPEED,
+      vy: fd[1] * BULLET_SPEED,
+      ownerId: socket.id,
+      ownerColor: p.color,
+      dist: 0,
+    };
+    bullets.push(bullet);
+    io.to('display').emit('shot-fired', { x: bullet.x, y: bullet.y, color: p.color });
+    socket.emit('shot-fired-ack');
   });
 
   socket.on('disconnect', (reason) => {
@@ -524,6 +555,80 @@ setInterval(() => {
     }
   }
 
+  // ── Bullet movement + collision ────────────────────────────────────
+  for (let bi = bullets.length - 1; bi >= 0; bi--) {
+    const b = bullets[bi];
+    b.x += b.vx;
+    b.y += b.vy;
+    b.dist += BULLET_SPEED;
+
+    // Remove if out of range or arena
+    if (b.dist > BULLET_MAX_DIST || b.x < -20 || b.x > ARENA_W + 20 || b.y < -20 || b.y > ARENA_H + 20) {
+      bullets.splice(bi, 1);
+      continue;
+    }
+
+    // Hit obstacle → remove bullet
+    let hitObs = false;
+    for (const ob of obstacles) {
+      if (aabbOverlap(b.x, b.y, BULLET_SIZE, BULLET_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+        hitObs = true;
+        break;
+      }
+    }
+    if (hitObs) {
+      io.to('display').emit('shot-hit', { x: b.x, y: b.y, type: 'obstacle' });
+      bullets.splice(bi, 1);
+      continue;
+    }
+
+    // Hit player (not the shooter)
+    let hitSomething = false;
+    for (const pid in players) {
+      if (pid === b.ownerId) continue;
+      const p = players[pid];
+      if (!p.alive || now < p.invulnUntil) continue;
+      if (aabbOverlap(b.x, b.y, BULLET_SIZE, BULLET_SIZE, p.x, p.y, PLAYER_SIZE, PLAYER_SIZE)) {
+        p.lives--;
+        p.invulnUntil = now + INVULN_MS;
+        const sock = io.sockets.sockets.get(pid);
+        if (sock) sock.emit('collision', { lives: p.lives });
+        io.to('display').emit('shot-hit', { x: b.x, y: b.y, type: 'player', targetId: pid });
+        if (p.lives <= 0) {
+          p.alive = false;
+          if (sock) sock.emit('eliminated');
+          io.to('display').emit('player-eliminated', pid);
+        }
+        hitSomething = true;
+        break;
+      }
+    }
+
+    // Hit bot → respawn bot safely
+    if (!hitSomething) {
+      for (const botId in bots) {
+        const bot = bots[botId];
+        if (!bot.alive) continue;
+        if (aabbOverlap(b.x, b.y, BULLET_SIZE, BULLET_SIZE, bot.x, bot.y, PLAYER_SIZE, PLAYER_SIZE)) {
+          const newPos = spawnPlayer();
+          bot.x = newPos.x;
+          bot.y = newPos.y;
+          bot.vx = 0;
+          bot.vy = 0;
+          bot.retargetAt = 0;
+          io.to('display').emit('shot-hit', { x: b.x, y: b.y, type: 'bot', targetId: botId });
+          io.to('display').emit('bot-respawned', { id: botId, x: bot.x, y: bot.y });
+          hitSomething = true;
+          break;
+        }
+      }
+    }
+
+    if (hitSomething) {
+      bullets.splice(bi, 1);
+    }
+  }
+
   // Broadcast frame
   const frame = {};
   for (const id in players) {
@@ -543,7 +648,7 @@ setInterval(() => {
       alive: bot.alive, invuln: false, isBot: true,
     };
   }
-  io.to('display').emit('frame', { players: frame, coin });
+  io.to('display').emit('frame', { players: frame, coin, bullets });
 
 }, 1000 / TICK_RATE);
 
