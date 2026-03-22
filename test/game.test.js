@@ -138,6 +138,14 @@ describe('collidesWithEntities', () => {
     expect(collidesWithEntities(200, 200, PLAYER_SIZE, {}, bots, null)).toBe(true);
   });
 
+  test('scans multiple bots until one overlaps', () => {
+    const twoBots = {
+      b_far: { x: 50, y: 50 },
+      b_hit: { x: 400, y: 400 },
+    };
+    expect(collidesWithEntities(400, 400, PLAYER_SIZE, {}, twoBots, null)).toBe(true);
+  });
+
   test('excludeId skips that player', () => {
     expect(collidesWithEntities(100, 100, PLAYER_SIZE, players, {}, 'p1')).toBe(false);
   });
@@ -310,6 +318,19 @@ describe('spawnPosition', () => {
     spawnPosition([], {}, {}, null, mockRng);
     expect(calls.length).toBeGreaterThan(0);
   });
+
+  test('after 200 failed random tries uses findSafeSpot fallback', () => {
+    const obs = [{ x: 780, y: 780, w: 100, h: 100 }];
+    // Two rng() calls per try: x then y. Force (800, 800) every time — inside the obstacle.
+    let call = 0;
+    const rngBlockedInObs = () => {
+      call += 1;
+      return call % 2 === 1 ? 0.5 : 650 / 780;
+    };
+    const pos = spawnPosition(obs, {}, {}, null, rngBlockedInObs);
+    expect(call).toBeGreaterThanOrEqual(400);
+    expect(collidesWithObstacles(pos.x, pos.y, PLAYER_SIZE, obs)).toBe(false);
+  });
 });
 
 // ── bounceVelocity ───────────────────────────────────────────────────────────
@@ -392,6 +413,26 @@ describe('pickBotGridSlots', () => {
   test('slot indices are monotonic for first picks', () => {
     const slots = pickBotGridSlots(2, []);
     expect(slots[0].slotIndex).toBeLessThan(slots[1].slotIndex);
+  });
+
+  test('skips grid slots outside arena margin (high row indices)', () => {
+    const slots = pickBotGridSlots(2, []);
+    for (const s of slots) {
+      expect(s.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H - 100);
+      expect(s.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W - 100);
+    }
+  });
+
+  test('large botCount scans high slot indices past non-fitting rows', () => {
+    const slots = pickBotGridSlots(400, []);
+    expect(slots.length).toBe(294);
+  });
+
+  test('skips slots occupied by obstacles', () => {
+    const obs = [{ x: 100, y: 100, w: PLAYER_SIZE + 20, h: PLAYER_SIZE + 20 }];
+    const slots = pickBotGridSlots(3, obs);
+    expect(slots.every(s => s.x !== 100 || s.y !== 100)).toBe(true);
+    expect(slots.length).toBe(3);
   });
 });
 

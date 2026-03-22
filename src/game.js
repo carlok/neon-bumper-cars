@@ -141,7 +141,7 @@ function botSlotCorner(slotIndex, cellStep = BOT_GRID_CELL_STEP) {
 function pickBotGridSlots(botCount, obstacles, cellStep = BOT_GRID_CELL_STEP) {
   const picked = [];
   const margin = 100;
-  const maxTry = 256;
+  const maxTry = 512; // scan past lower rows so high slot indices can be skipped when y exits arena
   for (let slot = 0; slot < maxTry && picked.length < botCount; slot++) {
     const { x, y } = botSlotCorner(slot, cellStep);
     if (x + PLAYER_SIZE > ARENA_W - margin || y + PLAYER_SIZE > ARENA_H - margin) {

@@ -20,6 +20,7 @@
   select    { flex:1; padding:12px; font-size:15px; border:1px solid #444; border-radius:8px; background:#1a1a1a; color:#fff; }
   .row      { display:flex; gap:8px; margin-bottom:10px; }
   #status { margin-top:16px; font-size:18px; color:#888; }
+  #cell-feedback { min-height:24px; margin-top:8px; font-size:14px; line-height:1.35; }
 </style>
 </head>
 <body>
@@ -42,17 +43,33 @@
     </select>
     <button class="zoom" onclick="sendZoom()">🔍 Set</button>
   </div>
+  <div id="cell-feedback" aria-live="polite"></div>
   <div id="status">Connecting…</div>
 </div>
 <div style="position:fixed; bottom:8px; left:0; right:0; text-align:center; font-size:12px; color:#555;">
-  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" aria-label="GitHub repository" style="color:#555; text-decoration:none;"><i class="fa-brands fa-github" aria-hidden="true"></i></a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.19
+  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" aria-label="GitHub repository" style="color:#555; text-decoration:none;"><i class="fa-brands fa-github" aria-hidden="true"></i></a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.21
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
   const socket = io();
+  const cellFeedback = document.getElementById('cell-feedback');
   socket.emit('join-admin');
   socket.on('connect', () => document.getElementById('status').textContent = 'Connected');
   socket.on('gameStateChange', s => document.getElementById('status').textContent = 'State: ' + s);
+  socket.on('admin-cell-size-ack', (data) => {
+    if (!data) return;
+    if (data.ok) {
+      cellFeedback.style.color = '#6d6';
+      if (data.displayCount === 0) {
+        cellFeedback.textContent = data.cellBasePx + 'px saved — no /display.html connected (open projector tab, then Set again)';
+      } else {
+        cellFeedback.textContent = data.cellBasePx + 'px applied to ' + data.displayCount + ' display' + (data.displayCount === 1 ? '' : 's');
+      }
+    } else {
+      cellFeedback.style.color = '#e66';
+      cellFeedback.textContent = data.error === 'password' ? 'Wrong password — cell size not sent' : 'Invalid size (use 8–512 px)';
+    }
+  });
   function send(action) {
     const pw = document.getElementById('pw').value;
     const evMap = { start: 'admin-start', stop: 'admin-stop', autoplay: 'admin-autoplay' };

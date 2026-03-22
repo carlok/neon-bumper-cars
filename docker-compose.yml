@@ -43,9 +43,12 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: neon-bumper-cars-test
+    environment:
+      - NEON_BUMPER_TESTS_IN_CONTAINER=1
     command: ["npm", "run", "test:coverage"]
     volumes:
       - ./src:/app/src
       - ./test:/app/test
+      - ./scripts:/app/scripts
     profiles:
       - test

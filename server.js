@@ -260,11 +260,19 @@ io.on('connection', (socket) => {
   });
 
   socket.on('admin-cell-size', (pw, cellBasePx) => {
-    if (pw !== ADMIN_PASSWORD) return;
+    if (pw !== ADMIN_PASSWORD) {
+      socket.emit('admin-cell-size-ack', { ok: false, error: 'password' });
+      return;
+    }
     const s = Number(cellBasePx);
-    if (!Number.isFinite(s) || s < 8 || s > 512) return;
-    console.log(`[ADMIN] admin-cell-size cellBasePx=${s}`);
+    if (!Number.isFinite(s) || s < 8 || s > 512) {
+      socket.emit('admin-cell-size-ack', { ok: false, error: 'range' });
+      return;
+    }
+    const displayCount = io.sockets.adapter.rooms.get('display')?.size ?? 0;
+    console.log(`[ADMIN] admin-cell-size cellBasePx=${s} displaySockets=${displayCount}`);
     io.to('display').emit('display-cell-base', s);
+    socket.emit('admin-cell-size-ack', { ok: true, cellBasePx: s, displayCount });
   });
 
   socket.on('swipe', (dir) => {

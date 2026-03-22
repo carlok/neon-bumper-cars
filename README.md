@@ -38,6 +38,21 @@ podman compose --profile dev up dev
 # That's it — edit files, save, browser auto-reconnects
 ```
 
+### Rebuild / reload after Dockerfile or dependency changes
+
+`package.json`, `Dockerfile.dev`, or `Dockerfile` changes require a **new image** before the next `up` or `run`:
+
+```bash
+podman compose --profile dev build
+podman compose --profile dev up dev
+
+# Tests image
+podman compose --profile test build test
+podman compose --profile test run --rm test
+```
+
+Stop a running dev stack with `Ctrl+C` or `podman compose --profile dev down`.
+
 ## Production
 
 ```bash
@@ -91,7 +106,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 1. Open `/display.html` on a projector or large screen.
 2. Players scan the QR code (or navigate to `/controller.html`).
 3. Admin opens `/admin.html`, enters password (`demo123` in dev; production uses `ADMIN_PASSWORD` from env), hits **Start Game**.
-4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — each successful shot (server accepts after cooldown) spawns **4 bullets** (up/down/left/right) from your center. **Ammo:** 10 charges after each spawn/rejoin; **cooldown ~800 ms** — taps during cooldown do not consume ammo (the phone UI stays in sync with the server). Bullets travel up to ~600 px then despawn; you cannot hit yourself (owner’s bullets ignore you). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
+4. Players swipe to move (Manhattan 4-way). **Shooting (server rules):** a tap emits `shoot`. The server only fires while the match is **PLAYING** and you are **alive**; otherwise it may ack with `rejected: 'state'`. You need **`shotsLeft` above zero** (10 after each spawn/rejoin); at **0 ammo** you get a `shot-fired-ack` with `shotsLeft: 0` and **no** bullets. Between shots there is an **800 ms** cooldown from `lastShotAt`; taps inside that window ack with `rejected: 'cooldown'` and **do not** spend ammo. On a real shot the server decrements ammo and spawns **4 cardinal bullets** (speed **10** world units per tick at 60 Hz). Bullets despawn when their traveled distance exceeds **600** world units **or** they leave the arena bounds; they can **hit obstacles** (bullet removed), **other players** (not the owner), and **robot bots** (bots respawn to their grid home). You **cannot** damage yourself (owner id is skipped). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
    - Obstacle count scales automatically with player count: fewer obstacles for large crowds, more for small groups (formula: `max(4, 20 − ⌊players/2⌋)`).
    - **Autoplay mode** (admin "🤖 Autoplay (32)" button): spawns 32 random-walk bots as regular players — useful for stress-testing the server at max capacity.
 5. Watch out for **robot bots** (🤖👾) — they spawn on a **fixed grid** of cells so they do not overlap at rest; they chase the nearest player and deal damage on contact. Shoot them to send them back to their home cell (or a safe fallback if that cell is blocked).
@@ -109,13 +124,16 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 | `test/game.test.js` | Unit tests for `src/game.js` |
 | `test/bot.test.js` | Unit tests for `src/bot.js` |
 | `test/config.test.js` | Production `ADMIN_PASSWORD` guard |
+| `scripts/assert-podman-tests.js` | Host `npm test` guard — use Podman `test` service |
 | `.env.example` | Template for Compose / local prod (`cp` → `.env`) |
 | `public/` | Client HTML (display, controller, admin) |
 
 ## Tests
 
+**Do not run `npm test` on the host** — it exits with instructions. Use Podman only:
+
 ```bash
-# Run tests + coverage (Podman — no host deps)
+# Run tests + coverage (Podman — no host Node/Jest)
 podman compose --profile test run --rm test
 ```
 
@@ -125,7 +143,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 
 - **Emoji players** — random people, animals, and vehicles (curated for projector visibility); your emoji + name shown large on your phone
 - **Robot bots** — 2 AI chasers (🤖👾) on rigid grid slots (no spawn overlap); red trails + pulsing aura
-- **Shooting** — tap requests a shot; server applies ~800 ms cooldown and only then fires 4 cardinal bullets and decrements ammo (controller shows remaining shots from server acks, so cooldown cannot desync the UI)
+- **Shooting** — tap emits `shoot`; server enforces PLAYING + alive + ammo + 800 ms cooldown; acks carry `shotsLeft` and optional `rejected` (`state` / `cooldown`); 4 bullets at 10 world units/tick, max travel 600 or off-arena; hits obstacles, other players, and bots (not owner)
 - **Adaptive obstacles** — obstacle count scales inversely with player count (`max(4, 20 − ⌊n/2⌋)`); regenerated fresh each time the game starts
 - **Autoplay stress-test** — admin panel "🤖 Autoplay (32)" fills the arena with 32 random-walk fake players to verify server performance at capacity
 - **Food/drink coins** — count scales with players (1 coin per 2 alive players, min 1); always-pulsing glow, staggered per coin
@@ -134,7 +152,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
 - **Adaptive render resolution** — display canvas scales to native pixels on HD, 2K, 4K, and Retina displays; emojis stay sharp at any screen size
-- **Display cell base (admin)** — sets the **CSS pixel width** of a reference tile (40 world units) on the fitted canvas. Zoom targets the **1600×1080 arena** (the 320px sidebar is excluded from “columns across playfield”): effective tile width is **cell base × k**, where **k** is an integer from screen size, `k = clamp(1…8, round(min(displayW, displayH) / 540))` (e.g. 1080p short side → k=2). Approximate arena columns ≈ `⌊(displayW × 1600/1920) / (cellBase × k)⌋`. Recalculates on window resize
+- **Display cell base (admin)** — sets the **CSS pixel width** of a reference strip (**40** world units) measured on the **arena slice** of the fitted canvas (arena is **1600** of **1920** logical width; sidebar stays readable). Zoom (clamped **0.2–16**) is `cellBase × 1600 / (40 × arenaCssWidth)` with `arenaCssWidth = cssCanvasWidth × (1600/1920)` — equivalent to scaling by full canvas width but calibrated on playfield only. **Larger cell base ⇒ higher zoom ⇒ fewer world units visible ⇒ bigger emojis.** When zoom **> 1**, the camera is **right-anchored** so the leaderboard column stays on screen (see `displayCameraCenterX` / `visibleArenaRefCellsAtZoom` in `src/displayCalibrate.js`, mirrored in `public/display.html`). Display prefers `canvas.clientWidth`. Admin **Set**: range **8–512**, password + display-tab checks. Recalculates on resize
 - **Wrap-around arena** (1600×1080 logical) — exit one side, appear on the other
 - **Leaderboard** — live rank, score, lives, and remaining shots for each player
 - **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)

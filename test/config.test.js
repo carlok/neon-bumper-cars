@@ -43,4 +43,12 @@ describe('src/config production ADMIN_PASSWORD', () => {
     const cfg = require('../src/config');
     expect(cfg.ADMIN_PASSWORD).toBe('custom-secret');
   });
+
+  test('production with strong non-demo password loads without throwing', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.ADMIN_PASSWORD = 'safe-production-secret-9';
+    expect(() => require('../src/config')).not.toThrow();
+    const cfg = require('../src/config');
+    expect(cfg.ADMIN_PASSWORD).toBe('safe-production-secret-9');
+  });
 });

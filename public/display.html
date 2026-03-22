@@ -51,10 +51,21 @@ socket.on('obstacles-reset', (newObs) => {
 const DISPLAY_CELL_REF_WORLD = 40;
 /** Logical game width including sidebar (must match Phaser config width). */
 const DISPLAY_LOGIC_W = 1920;
+/** Logical game height (must match Phaser config height). */
+const DISPLAY_LOGIC_H = 1080;
+/** Arena width in world units (matches server ARENA_W / displayCalibrate). */
+const ARENA_LOGIC_W = 1600;
 
 socket.on('display-cell-base', (cellBasePx) => {
   if (gameScene) gameScene.setDisplayCellBase(cellBasePx);
 });
+
+/** Keep leaderboard (x ≥ 1600) on-screen when zoomed in — sync displayCalibrate.displayCameraCenterX */
+function displayCameraCenterXFromZoom(z) {
+  if (!Number.isFinite(z) || z <= 0) return DISPLAY_LOGIC_W / 2;
+  if (z <= 1) return DISPLAY_LOGIC_W / 2;
+  return DISPLAY_LOGIC_W - DISPLAY_LOGIC_W / 2 / z;
+}
 
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -182,7 +193,7 @@ class GameScene extends Phaser.Scene {
     this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
       fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.18', {
+    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.21', {
       fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
@@ -379,11 +390,9 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Cell base = admin “screen cell” width in CSS px for DISPLAY_CELL_REF_WORLD (40) world units.
-   * Zoom uses the **1600-wide arena slice** of the fitted canvas (not the 320px sidebar): effective
-   * tile width is (cellBasePx × k), with integer k from min(displayW, displayH) / 540 (clamped 1…8).
-   * Approx. arena columns ≈ floor(arenaDw / (cellBasePx × k)), arenaDw = displayW × (1600/1920).
-   * Keep formula in sync with src/displayCalibrate.js.
+   * Cell base = CSS px for 40 world units on the **arena** slice of the canvas (not counting sidebar width).
+   * zoom = cellBase × ARENA_W / (40 × arenaCssWidth), arenaCssWidth = canvasWidth × (1600/1920).
+   * z>1: camera right-anchored so the leaderboard column stays visible (displayCameraCenterXFromZoom).
    */
   setDisplayCellBase(cellBasePx) {
     const s = Number(cellBasePx);
@@ -394,20 +403,20 @@ class GameScene extends Phaser.Scene {
 
   applyDisplayCellBaseZoom() {
     const cam = this.cameras.main;
-    const dw = this.scale.displaySize.width;
-    const dh = this.scale.displaySize.height;
+    const canvas = this.game?.canvas;
+    const dw =
+      canvas && canvas.clientWidth > 0 ? canvas.clientWidth : this.scale.displaySize.width;
     const s = this._cellBasePx ?? 40;
     if (!dw || dw < 1) {
       cam.setZoom(1);
-      cam.centerOn(800, 540);
+      cam.centerOn(DISPLAY_LOGIC_W / 2, DISPLAY_LOGIC_H / 2);
       return;
     }
-    const k = Math.max(1, Math.min(8, Math.round(Math.min(dw, dh) / 540)));
-    const effectiveBase = s * k;
-    let z = (effectiveBase * DISPLAY_LOGIC_W) / (DISPLAY_CELL_REF_WORLD * dw);
+    const arenaDw = dw * (ARENA_LOGIC_W / DISPLAY_LOGIC_W);
+    let z = (s * ARENA_LOGIC_W) / (DISPLAY_CELL_REF_WORLD * arenaDw);
     z = Math.max(0.2, Math.min(z, 16));
     cam.setZoom(z);
-    cam.centerOn(800, 540);
+    cam.centerOn(displayCameraCenterXFromZoom(z), DISPLAY_LOGIC_H / 2);
   }
 
   doCoinBurst(cx, cy) {
