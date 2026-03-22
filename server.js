@@ -383,7 +383,7 @@ setInterval(() => {
   const frame = {};
   for (const id in players) {
     const p = players[id];
-    frame[id] = { x: p.x, y: p.y, color: p.color, emoji: p.emoji, name: p.name, score: p.score, lives: p.lives, alive: p.alive, invuln: now < p.invulnUntil };
+    frame[id] = { x: p.x, y: p.y, color: p.color, emoji: p.emoji, name: p.name, score: p.score, lives: p.lives, shotsLeft: p.shotsLeft, alive: p.alive, invuln: now < p.invulnUntil };
   }
   for (const botId in bots) {
     const bot = bots[botId];

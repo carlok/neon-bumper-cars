@@ -140,7 +140,7 @@ class GameScene extends Phaser.Scene {
 
     // "SCAN TO PLAY" text — sits above the QR with clear gap
     this.add.text(lbCenterX, 818, '📱 SCAN TO PLAY', {
-      fontSize: '18px', fontFamily: 'monospace', color: '#ddb0ff', align: 'center'
+      fontSize: '18px', fontFamily: 'monospace', color: '#ffdd44', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
     // Waiting text (centered in game area)
@@ -158,13 +158,13 @@ class GameScene extends Phaser.Scene {
 
     // Project name + GitHub + copyright + version (under QR in sidebar)
     this.add.text(lbCenterX, 1030, '⚡ Neon Bumper Cars', {
-      fontSize: '15px', fontFamily: 'monospace', color: '#cc99ff', align: 'center'
+      fontSize: '15px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
     this.add.text(lbCenterX, 1050, '🐙 carlok/neon-bumper-cars', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#8855bb', align: 'center'
+      fontSize: '13px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 1068, '© 2026 carlok  |  v1.1.6', {
-      fontSize: '13px', fontFamily: 'monospace', color: '#664488', align: 'center'
+    this.add.text(lbCenterX, 1068, '© 2026 carlok  |  v1.1.7', {
+      fontSize: '13px', fontFamily: 'monospace', color: '#888888', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
     this.obstaclesCreated = false;
@@ -311,8 +311,9 @@ class GameScene extends Phaser.Scene {
       if (i < sorted.length) {
         const p = sorted[i];
         const hearts = '♥'.repeat(Math.max(0, p.lives));
-        const name = p.name || '???';
-        this.lbRows[i].setText(`${i + 1}. ${p.emoji || '■'} ${name} ${p.score}p ${hearts}`);
+        const name = (p.name || '???').slice(0, 10);
+        const shots = p.shotsLeft !== undefined ? ` 💥${p.shotsLeft}` : '';
+        this.lbRows[i].setText(`${i + 1}. ${p.emoji || '■'} ${name} ${p.score}p ${hearts}${shots}`);
         this.lbRows[i].setColor(p.color);
         this.lbBgs[i].bg.setAlpha(i === 0 ? 0.9 : 0.6);
         this.lbBgs[i].highlight.setAlpha(i === 0 ? 0.8 : 0.4);
