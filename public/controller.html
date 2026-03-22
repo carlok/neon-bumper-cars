@@ -137,6 +137,54 @@ class SFX {
   blocked() {
     this._play(110, 'sawtooth', 0.15, 0.25);
   }
+
+  rejoin() {
+    // Ascending power-up: quick bright arpeggio
+    const t = this.ctx.currentTime;
+    const notes = [330, 440, 550, 660, 880];
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(f, t + i * 0.05);
+      gain.gain.setValueAtTime(0.2, t + i * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.05 + 0.1);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(t + i * 0.05);
+      osc.stop(t + i * 0.05 + 0.1);
+    });
+  }
+
+  gameStart() {
+    // Fanfare: two rising chords
+    const t = this.ctx.currentTime;
+    [523, 659, 784].forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(f, t + i * 0.1);
+      gain.gain.setValueAtTime(0.15, t + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.2);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(t + i * 0.1);
+      osc.stop(t + i * 0.1 + 0.2);
+    });
+  }
+}
+
+// ── Vibration patterns (distinct per action) ────────────────────────
+const VIBE = {
+  swipe:     15,                         // tiny tick
+  coin:      [30, 20, 30],               // double-tap reward
+  collision: [80, 30, 150],              // bump then grind
+  blocked:   [40, 20, 40],              // short double-thud
+  eliminated:[100, 50, 100, 50, 300],    // dramatic pattern burst
+  rejoin:    [30, 20, 30, 20, 60],       // ascending quick taps
+  gameStart: [50, 30, 50, 30, 100],      // ready-set-go
+  gameOver:  [200, 100, 400],            // long fade
+};
+function vibe(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
 }
 
 // ── State ─────────────────────────────────────────────────────────────
@@ -205,6 +253,8 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
     socket.on('gameStateChange', (s) => {
       console.log('[STATE] gameStateChange:', s);
       myGameState = s;
+      if (s === 'PLAYING') { sfx.gameStart(); vibe(VIBE.gameStart); }
+      if (s === 'STOPPED') { vibe(VIBE.gameOver); }
       updateUI();
     });
 
@@ -212,6 +262,7 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       score = s;
       scoreDisplay.textContent = score;
       sfx.coin();
+      vibe(VIBE.coin);
       flash();
     });
 
@@ -219,19 +270,19 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       lives = data.lives;
       livesDisplay.textContent = '♥'.repeat(Math.max(0, lives));
       sfx.collision();
-      if (navigator.vibrate) navigator.vibrate(200);
+      vibe(VIBE.collision);
       flash();
     });
 
     socket.on('blocked', () => {
       sfx.blocked();
-      if (navigator.vibrate) navigator.vibrate(50);
+      vibe(VIBE.blocked);
     });
 
     socket.on('eliminated', () => {
       myGameState = 'ELIMINATED';
       sfx.death();
-      if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 300]);
+      vibe(VIBE.eliminated);
       updateUI();
     });
   } catch (err) {
@@ -286,6 +337,8 @@ rejoinBtn.addEventListener('click', () => {
   console.log('[REJOIN] Rejoin tapped');
   if (!socket || myGameState !== 'ELIMINATED') return;
   socket.emit('rejoin-player');
+  sfx.rejoin();
+  vibe(VIBE.rejoin);
   myGameState = 'PLAYING';
   lives = 3;
   rejoinBtn.style.display = 'none';
@@ -333,6 +386,7 @@ document.addEventListener('touchend', (e) => {
   }
   socket.emit('swipe', dir);
   sfx.swipe();
+  vibe(VIBE.swipe);
   dirIndicator.textContent = arrows[dir];
 }, { passive: false });
 
