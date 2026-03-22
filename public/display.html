@@ -195,6 +195,17 @@ function displayCameraCenterYFromZoom(z) {
   return cyTop + DISPLAY_CAMERA_Y_ZOOM_ANCHOR_BLEND * (cyBottom - cyTop);
 }
 
+/** Phaser emoji Text is not square at `fontSize`; fixed box matches server AABB so static/moving cells align. */
+function addGridCellEmojiText(scene, centerX, centerY, cellW, cellH, glyph, depth) {
+  const fs = Math.min(cellW, cellH);
+  return scene.add.text(centerX, centerY, glyph, {
+    fontSize: `${fs}px`,
+    align: 'center',
+    fixedWidth: cellW,
+    fixedHeight: cellH,
+  }).setOrigin(0.5).setDepth(depth);
+}
+
 class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
@@ -359,9 +370,15 @@ class GameScene extends Phaser.Scene {
         } else {
           emoji = emojiMap[ob.type] || '❓';
         }
-        const t = this.add.text(ob.x + ob.w / 2, ob.y + ob.h / 2, emoji, {
-          fontSize: `${Math.min(ob.w, ob.h)}px`
-        }).setOrigin(0.5).setDepth(3);
+        const t = addGridCellEmojiText(
+          this,
+          ob.x + ob.w / 2,
+          ob.y + ob.h / 2,
+          ob.w,
+          ob.h,
+          emoji,
+          3
+        );
         this.obsTexts.push(t);
       }
     }
@@ -408,8 +425,15 @@ class GameScene extends Phaser.Scene {
       }
       if (!this.playerGfx[id]) {
         const faceEmoji = sp.emoji || '😀';
-        const g = this.add.text(sp.x + 20, sp.y + 20, faceEmoji, { fontSize: '40px' })
-          .setOrigin(0.5).setDepth(10);
+        const g = addGridCellEmojiText(
+          this,
+          sp.x + 20,
+          sp.y + 20,
+          40,
+          40,
+          faceEmoji,
+          10
+        );
         this.playerGfx[id] = g;
 
         // Particle trail (red menacing trail for bots)
