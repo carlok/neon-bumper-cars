@@ -121,10 +121,22 @@ function spawnCoin() {
 // ── Player helpers ────────────────────────────────────────────────────
 function spawnPlayer() {
   const margin = 150;
-  return {
-    x: margin + Math.random() * (ARENA_W - 2 * margin),
-    y: margin + Math.random() * (ARENA_H - 2 * margin),
-  };
+  let attempts = 0;
+  while (attempts < 200) {
+    attempts++;
+    const x = margin + Math.random() * (ARENA_W - 2 * margin);
+    const y = margin + Math.random() * (ARENA_H - 2 * margin);
+    let blocked = false;
+    for (const ob of obstacles) {
+      if (aabbOverlap(x, y, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+        blocked = true;
+        break;
+      }
+    }
+    if (!blocked) return { x, y };
+  }
+  // Fallback: center of arena
+  return { x: ARENA_W / 2, y: ARENA_H / 2 };
 }
 
 function nextColor() {

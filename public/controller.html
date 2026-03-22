@@ -353,24 +353,26 @@ function flash() {
 // ── Swipe Detection ───────────────────────────────────────────────────
 let touchStartX = 0, touchStartY = 0;
 
+// Let touch events pass through to buttons (join + rejoin)
+function isTouchOnButton(e) {
+  const t = e.target;
+  return t.tagName === 'BUTTON' || t.closest('button');
+}
+
 document.addEventListener('touchstart', (e) => {
-  // Don't block touch on join button — this was preventing "tap to join" on some devices
-  if (!joined) {
-    console.log('[TOUCH] touchstart before join, allowing default for button tap');
-    return;
-  }
+  if (!joined || isTouchOnButton(e)) return;
   e.preventDefault();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
 }, { passive: false });
 
 document.addEventListener('touchmove', (e) => {
-  if (!joined) return;
+  if (!joined || isTouchOnButton(e)) return;
   e.preventDefault();
 }, { passive: false });
 
 document.addEventListener('touchend', (e) => {
-  if (!joined) return; // Let the click event through to the join button
+  if (!joined || isTouchOnButton(e)) return; // Let clicks through to buttons
   e.preventDefault();
   if (myGameState !== 'PLAYING' || !socket) return;
   const dx = e.changedTouches[0].clientX - touchStartX;
