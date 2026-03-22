@@ -1,5 +1,7 @@
 'use strict';
 
+const { sanitizeArenaColumns } = require('./displayCalibrate');
+
 // ── Game constants ─────────────────────────────────────────────────────
 const ARENA_W         = 1600;
 const ARENA_H         = 1080;
@@ -17,6 +19,7 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 const TICK_RATE       = 60;
+const DISPLAY_ARENA_COLUMNS = sanitizeArenaColumns(process.env.DISPLAY_ARENA_COLUMNS);
 const MAX_PLAYERS     = 32;
 const BULLET_SPEED    = 10;
 const BULLET_SIZE     = 10;
@@ -24,7 +27,7 @@ const BULLET_MAX_DIST = 600;
 const SHOOT_COOLDOWN_MS = 800;
 const MAX_SHOTS       = 10;
 const OBSTACLE_COUNT  = 20;
-const OBS_SIZE        = 50;
+const OBS_SIZE        = 40; // one world grid cell (matches PLAYER_SIZE / display 40wu strip)
 const BOT_COUNT       = 2;
 const BOT_SPEED       = 3;
 
@@ -87,7 +90,7 @@ const NAME_NOUN = [
 
 module.exports = {
   ARENA_W, ARENA_H, PLAYER_SIZE, PLAYER_SPEED, COIN_SIZE, INVULN_MS,
-  ADMIN_PASSWORD, TICK_RATE, MAX_PLAYERS, BULLET_SPEED, BULLET_SIZE,
+  ADMIN_PASSWORD, TICK_RATE, DISPLAY_ARENA_COLUMNS, MAX_PLAYERS, BULLET_SPEED, BULLET_SIZE,
   BULLET_MAX_DIST, SHOOT_COOLDOWN_MS, MAX_SHOTS, OBSTACLE_COUNT, OBS_SIZE,
   BOT_COUNT, BOT_SPEED,
   OBSTACLE_TYPES, OBS_SIZES,

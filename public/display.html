@@ -4,12 +4,23 @@
 <meta charset="UTF-8">
 <title>Neon Bumper Cars — Display</title>
 <style>
-  * { margin:0; padding:0; }
-  body { background:#111; overflow:hidden; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { height:100%; }
+  body {
+    background:#111;
+    overflow:hidden;
+    height:100%;
+    padding:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #phaser-root { flex-shrink:0; min-height:0; min-width:0; }
   canvas { display:block; }
 </style>
 </head>
 <body>
+<div id="phaser-root"></div>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -26,6 +37,11 @@ socket.on('init', (data) => {
   obstacles = data.obstacles;
   gameState = data.gameState;
   serverCoins = data.coins || [];
+  if (data.displayConfig) {
+    displayConfig = sanitizeDisplayConfig(data.displayConfig);
+  }
+  applyDisplayViewportSize();
+  if (gameScene) gameScene.setDisplayConfig(displayConfig);
 });
 socket.on('gameStateChange', (s) => { gameState = s; });
 let serverBullets = [];
@@ -55,18 +71,128 @@ const DISPLAY_LOGIC_W = 1920;
 const DISPLAY_LOGIC_H = 1080;
 /** Arena width in world units (matches server ARENA_W / displayCalibrate). */
 const ARENA_LOGIC_W = 1600;
+/** Right sidebar in world units (1920 − arena); must match displayCalibrate DISPLAY_SIDEBAR_WORLD. */
+const DISPLAY_SIDEBAR_WORLD = DISPLAY_LOGIC_W - ARENA_LOGIC_W;
+/** Default visible arena columns when server config is missing. */
+const DISPLAY_DEFAULT_ARENA_COLUMNS = 40;
+/** Minimum visible arena columns. */
+const DISPLAY_MIN_ARENA_COLUMNS = 8;
+/** Maximum visible arena columns. */
+const DISPLAY_MAX_ARENA_COLUMNS = 40;
 
-socket.on('display-cell-base', (cellBasePx) => {
-  if (gameScene) gameScene.setDisplayCellBase(cellBasePx);
+let displayConfig = {
+  targetWidth: DISPLAY_LOGIC_W,
+  targetHeight: DISPLAY_LOGIC_H,
+  arenaColumns: DISPLAY_DEFAULT_ARENA_COLUMNS,
+};
+
+function sanitizeArenaColumns(value) {
+  const cols = Math.round(Number(value));
+  if (!Number.isFinite(cols) || cols <= 0) return DISPLAY_DEFAULT_ARENA_COLUMNS;
+  return Math.max(DISPLAY_MIN_ARENA_COLUMNS, Math.min(DISPLAY_MAX_ARENA_COLUMNS, cols));
+}
+
+function normalizeDisplayResolution(targetWidth, targetHeight) {
+  const width = Number(targetWidth);
+  const height = Number(targetHeight);
+  return {
+    width: Number.isFinite(width) && width >= 1 ? width : DISPLAY_LOGIC_W,
+    height: Number.isFinite(height) && height >= 1 ? height : DISPLAY_LOGIC_H,
+  };
+}
+
+function fitDisplayResolution(targetWidth, targetHeight) {
+  const target = normalizeDisplayResolution(targetWidth, targetHeight);
+  const scale = Math.min(target.width / DISPLAY_LOGIC_W, target.height / DISPLAY_LOGIC_H);
+  return {
+    width: DISPLAY_LOGIC_W * scale,
+    height: DISPLAY_LOGIC_H * scale,
+  };
+}
+
+function arenaContentWidthCss(displayWidthCss) {
+  return displayWidthCss * (ARENA_LOGIC_W / DISPLAY_LOGIC_W);
+}
+
+/** Sidebar-aware zoom — sync with displayCalibrate.displayZoomForArenaColumns. */
+function displayZoomForArenaColumns(arenaColumns) {
+  const cols = sanitizeArenaColumns(arenaColumns);
+  const denom = DISPLAY_CELL_REF_WORLD * cols + DISPLAY_SIDEBAR_WORLD;
+  const z = DISPLAY_LOGIC_W / denom;
+  return Math.max(1, Math.min(16, z));
+}
+
+function computeDisplayProjection(arenaColumns, targetWidth, targetHeight) {
+  const cols = sanitizeArenaColumns(arenaColumns);
+  const fitted = fitDisplayResolution(targetWidth, targetHeight);
+  const zoom = displayZoomForArenaColumns(cols);
+  const arenaCssW = arenaContentWidthCss(fitted.width);
+  return {
+    arenaColumns: cols,
+    fittedWidth: fitted.width,
+    fittedHeight: fitted.height,
+    screenCellPx: cols > 0 ? arenaCssW / cols : 0,
+    zoom,
+  };
+}
+
+function displayViewportCssSize() {
+  const fitted = fitDisplayResolution(displayConfig.targetWidth, displayConfig.targetHeight);
+  const s = Math.min(
+    1,
+    window.innerWidth / fitted.width,
+    window.innerHeight / fitted.height
+  );
+  return {
+    width: Math.round(fitted.width * s),
+    height: Math.round(fitted.height * s),
+  };
+}
+
+function applyDisplayViewportSize() {
+  const { width, height } = displayViewportCssSize();
+  const root = document.getElementById('phaser-root');
+  root.style.width = width + 'px';
+  root.style.height = height + 'px';
+  if (window.__neonPhaserGame && window.__neonPhaserGame.scale) {
+    window.__neonPhaserGame.scale.refresh();
+  }
+}
+
+function sanitizeDisplayConfig(nextConfig) {
+  const resolution = normalizeDisplayResolution(nextConfig?.targetWidth, nextConfig?.targetHeight);
+  return {
+    targetWidth: resolution.width,
+    targetHeight: resolution.height,
+    arenaColumns: sanitizeArenaColumns(nextConfig?.arenaColumns),
+  };
+}
+
+socket.on('display-config', (nextConfig) => {
+  displayConfig = sanitizeDisplayConfig(nextConfig);
+  applyDisplayViewportSize();
+  if (gameScene) gameScene.setDisplayConfig(displayConfig);
 });
 
 /** Camera center X — sync with displayCalibrate.displayCameraCenterX.
  *  z ≤ 1: center the full 1920-wide layout.
- *  z > 1: left-anchor so the viewport starts at x=0 (arena top-left). */
+ *  z > 1: right-anchor so the viewport ends at x=1920 (sidebar/leaderboard visible). */
 function displayCameraCenterXFromZoom(z) {
   if (!Number.isFinite(z) || z <= 0) return DISPLAY_LOGIC_W / 2;
   if (z <= 1) return DISPLAY_LOGIC_W / 2;
-  return DISPLAY_LOGIC_W / 2 / z;
+  const halfW = DISPLAY_LOGIC_W / 2 / z;
+  return DISPLAY_LOGIC_W - halfW;
+}
+
+/** Sync with displayCalibrate.displayCameraCenterY (blend top/bottom when z>1). */
+const DISPLAY_CAMERA_Y_ZOOM_ANCHOR_BLEND = 0.1;
+function displayCameraCenterYFromZoom(z) {
+  if (!Number.isFinite(z) || z <= 0) return DISPLAY_LOGIC_H / 2;
+  if (z <= 1) return DISPLAY_LOGIC_H / 2;
+  const halfH = DISPLAY_LOGIC_H / 2 / z;
+  const cyTop = halfH;
+  const cyBottom = DISPLAY_LOGIC_H - halfH;
+  return cyTop + DISPLAY_CAMERA_Y_ZOOM_ANCHOR_BLEND * (cyBottom - cyTop);
 }
 
 class GameScene extends Phaser.Scene {
@@ -74,8 +200,8 @@ class GameScene extends Phaser.Scene {
 
   create() {
     gameScene = this;
-    this._cellBasePx = 40;
-    this.scale.on('resize', () => this.applyDisplayCellBaseZoom());
+    this._displayConfig = sanitizeDisplayConfig(displayConfig);
+    this.scale.on('resize', () => this.applyDisplayProjection());
     this.playerGfx = {};
     this.trailEmitters = {};
     this.botAuras = {};   // pulsing aura Graphics per bot
@@ -131,7 +257,7 @@ class GameScene extends Phaser.Scene {
     this.coinTexts = [];
     for (let i = 0; i < 5; i++) {
       this.coinTexts.push(
-        this.add.text(0, 0, '🍎', { fontSize: '36px' }).setOrigin(0.5).setDepth(5).setVisible(false)
+        this.add.text(0, 0, '🍎', { fontSize: '30px' }).setOrigin(0.5).setDepth(5).setVisible(false)
       );
     }
 
@@ -159,7 +285,18 @@ class GameScene extends Phaser.Scene {
       this.lbRows.push(t);
     }
 
-    // ── Sidebar: QR code (below leaderboard) ────────────────────────
+    // ── Sidebar: QR + footers — anchored to bottom of 1080 logical canvas ──
+    const sbPadBottom = 12;
+    const sbQrLift = 32; // move QR + SCAN upward (camera Y blend can push footers low)
+    const sbQrSize = 168;
+    const sbQrHalf = sbQrSize / 2;
+    const sbGapQrFoot = 12;
+    const sbGapScanQr = 12;
+    const sbFoot2Y = DISPLAY_LOGIC_H - sbPadBottom - 8; // copyright (last line)
+    const sbFoot1Y = sbFoot2Y - 34; // title line above
+    const sbQrCenterY = sbFoot1Y - sbGapQrFoot - sbQrHalf - 8 - sbQrLift;
+    const sbScanY = sbQrCenterY - sbQrHalf - sbGapScanQr - 8;
+
     const origin = window.location.origin;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(origin + '/controller.html')}`;
     this.qrLoaded = false;
@@ -167,14 +304,13 @@ class GameScene extends Phaser.Scene {
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       this.textures.addImage('qr', img);
-      this.qrSprite = this.add.image(lbCenterX, 700, 'qr')
-        .setDisplaySize(210, 210).setDepth(152).setAlpha(0.95);
+      this.qrSprite = this.add.image(lbCenterX, sbQrCenterY, 'qr')
+        .setDisplaySize(sbQrSize, sbQrSize).setDepth(152).setAlpha(0.95);
       this.qrLoaded = true;
     };
     img.src = qrUrl;
 
-    // "SCAN TO PLAY" text — sits above the QR with clear gap
-    this.add.text(lbCenterX, 540, '📱 SCAN TO PLAY', {
+    this.add.text(lbCenterX, sbScanY, '📱 SCAN TO PLAY', {
       fontSize: '20px', fontFamily: 'monospace', color: '#ffdd44', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
@@ -191,17 +327,16 @@ class GameScene extends Phaser.Scene {
     pg.generateTexture('particle', 6, 6);
     pg.destroy();
 
-    // Footer: project name + copyright inside the Phaser canvas (large enough to stay sharp)
-    this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
-      fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
+    this.add.text(lbCenterX, sbFoot1Y, '⚡ Neon Bumper Cars', {
+      fontSize: '20px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.21', {
-      fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
+    this.add.text(lbCenterX, sbFoot2Y, '© 2026 carlok  |  v1.1.24', {
+      fontSize: '16px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
     this.obstaclesCreated = false;
-    this.applyDisplayCellBaseZoom();
-    this.time.delayedCall(0, () => this.applyDisplayCellBaseZoom());
+    this.applyDisplayProjection();
+    this.time.delayedCall(0, () => this.applyDisplayProjection());
   }
 
   update() {
@@ -273,7 +408,7 @@ class GameScene extends Phaser.Scene {
       }
       if (!this.playerGfx[id]) {
         const faceEmoji = sp.emoji || '😀';
-        const g = this.add.text(sp.x, sp.y, faceEmoji, { fontSize: '36px' })
+        const g = this.add.text(sp.x + 20, sp.y + 20, faceEmoji, { fontSize: '40px' })
           .setOrigin(0.5).setDepth(10);
         this.playerGfx[id] = g;
 
@@ -392,34 +527,27 @@ class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Cell base = CSS px for 40 world units on the **arena** slice of the canvas (not counting sidebar width).
-   * zoom = cellBase × ARENA_W / (40 × arenaCssWidth), arenaCssWidth = canvasWidth × (1600/1920).
-   * z>1: camera left-top-anchored so the arena top-left corner is shown (displayCameraCenterXFromZoom).
+   * Project the arena from a selected output resolution and a fixed env-driven arena-column count.
+   * zoom is derived from visible columns, while the selected resolution only affects the fitted canvas size
+   * and the resulting on-screen px size of each 40-world-unit reference cell.
    */
-  setDisplayCellBase(cellBasePx) {
-    const s = Number(cellBasePx);
-    if (!Number.isFinite(s) || s < 8) return;
-    this._cellBasePx = s;
-    this.applyDisplayCellBaseZoom();
+  setDisplayConfig(nextConfig) {
+    this._displayConfig = sanitizeDisplayConfig(nextConfig);
+    this.applyDisplayProjection();
   }
 
-  applyDisplayCellBaseZoom() {
+  applyDisplayProjection() {
     const cam = this.cameras.main;
-    const canvas = this.game?.canvas;
-    const dw =
-      canvas && canvas.clientWidth > 0 ? canvas.clientWidth : this.scale.displaySize.width;
-    const s = this._cellBasePx ?? 40;
-    if (!dw || dw < 1) {
-      cam.setZoom(1);
-      cam.centerOn(DISPLAY_LOGIC_W / 2, DISPLAY_LOGIC_H / 2);
-      return;
-    }
-    const arenaDw = dw * (ARENA_LOGIC_W / DISPLAY_LOGIC_W);
-    let z = (s * ARENA_LOGIC_W) / (DISPLAY_CELL_REF_WORLD * arenaDw);
-    z = Math.max(0.2, Math.min(z, 16));
-    cam.setZoom(z);
-    const cy = z > 1 ? DISPLAY_LOGIC_H / 2 / z : DISPLAY_LOGIC_H / 2;
-    cam.centerOn(displayCameraCenterXFromZoom(z), cy);
+    const projection = computeDisplayProjection(
+      this._displayConfig?.arenaColumns,
+      this._displayConfig?.targetWidth,
+      this._displayConfig?.targetHeight
+    );
+    cam.setZoom(projection.zoom);
+    cam.centerOn(
+      displayCameraCenterXFromZoom(projection.zoom),
+      displayCameraCenterYFromZoom(projection.zoom)
+    );
   }
 
   doCoinBurst(cx, cy) {
@@ -512,14 +640,16 @@ class GameScene extends Phaser.Scene {
   }
 }
 
-// Render buffer resolution: scale with devicePixelRatio (Retina) and viewport size (4K/2K).
-// Game coordinates stay at 1920×1080; internal buffer is RESOLUTION× larger → crisp emojis
-// at any display (HD=1, QHD/4K=2, 8K or Retina-4K capped at 3).
-const _scaleToFit = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+applyDisplayViewportSize();
+
+// Render buffer: DPR × CSS scale of the fitted viewport (capped) for crisp emojis on 4K / Retina.
+const _root = document.getElementById('phaser-root');
+const _scaleToFit = Math.min(_root.clientWidth / 1920, _root.clientHeight / 1080, 1) || 1;
 const RESOLUTION = Math.min(Math.ceil((window.devicePixelRatio || 1) * Math.max(1, _scaleToFit)), 3);
 
 const config = {
   type: Phaser.WEBGL,
+  parent: 'phaser-root',
   width: 1920,
   height: 1080,
   resolution: RESOLUTION,
@@ -531,7 +661,11 @@ const config = {
   scene: GameScene,
 };
 
-new Phaser.Game(config);
+window.__neonPhaserGame = new Phaser.Game(config);
+
+window.addEventListener('resize', () => {
+  applyDisplayViewportSize();
+});
 </script>
 </body>
 </html>

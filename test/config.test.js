@@ -4,6 +4,7 @@ describe('src/config production ADMIN_PASSWORD', () => {
   const saved = {
     NODE_ENV: process.env.NODE_ENV,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+    DISPLAY_ARENA_COLUMNS: process.env.DISPLAY_ARENA_COLUMNS,
   };
 
   afterEach(() => {
@@ -12,6 +13,8 @@ describe('src/config production ADMIN_PASSWORD', () => {
     else process.env.NODE_ENV = saved.NODE_ENV;
     if (saved.ADMIN_PASSWORD === undefined) delete process.env.ADMIN_PASSWORD;
     else process.env.ADMIN_PASSWORD = saved.ADMIN_PASSWORD;
+    if (saved.DISPLAY_ARENA_COLUMNS === undefined) delete process.env.DISPLAY_ARENA_COLUMNS;
+    else process.env.DISPLAY_ARENA_COLUMNS = saved.DISPLAY_ARENA_COLUMNS;
   });
 
   test('throws when NODE_ENV is production and ADMIN_PASSWORD is unset', () => {
@@ -51,4 +54,31 @@ describe('src/config production ADMIN_PASSWORD', () => {
     const cfg = require('../src/config');
     expect(cfg.ADMIN_PASSWORD).toBe('safe-production-secret-9');
   });
+
+  test('uses default DISPLAY_ARENA_COLUMNS when unset', () => {
+    process.env.NODE_ENV = 'test';
+    delete process.env.DISPLAY_ARENA_COLUMNS;
+    const cfg = require('../src/config');
+    expect(cfg.DISPLAY_ARENA_COLUMNS).toBe(40);
+  });
+
+  test('uses custom DISPLAY_ARENA_COLUMNS when valid', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.DISPLAY_ARENA_COLUMNS = '20';
+    const cfg = require('../src/config');
+    expect(cfg.DISPLAY_ARENA_COLUMNS).toBe(20);
+  });
+
+  test('clamps invalid DISPLAY_ARENA_COLUMNS into supported range', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.DISPLAY_ARENA_COLUMNS = '2';
+    let cfg = require('../src/config');
+    expect(cfg.DISPLAY_ARENA_COLUMNS).toBe(8);
+
+    jest.resetModules();
+    process.env.DISPLAY_ARENA_COLUMNS = '80';
+    cfg = require('../src/config');
+    expect(cfg.DISPLAY_ARENA_COLUMNS).toBe(40);
+  });
+
 });

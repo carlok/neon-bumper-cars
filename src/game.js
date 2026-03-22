@@ -15,7 +15,8 @@ const MAX_PLAYERS   = 32;
 const MAX_SHOTS     = 10;
 const SHOOT_COOLDOWN_MS = 800;
 const OBSTACLE_COUNT = 20;
-const OBS_SIZE      = 50;
+/** Same as PLAYER_SIZE — one column/row in the world grid (matches display calibration). */
+const OBS_SIZE      = 40;
 
 const OBSTACLE_TYPES = ['tree', 'stone', 'lake'];
 const OBS_SIZES = {
@@ -100,37 +101,48 @@ function isPositionBlocked(x, y, size, obstacles, players, bots, excludeId) {
   );
 }
 
+/** World grid cell = player tile (40×40); arena 1600×1080 → 40×27 cells. */
+const WORLD_GRID_CELL = PLAYER_SIZE;
+
+function arenaGridMetrics(cellStep = WORLD_GRID_CELL) {
+  const cols = Math.max(1, Math.floor(ARENA_W / cellStep));
+  const rows = Math.max(1, Math.floor(ARENA_H / cellStep));
+  return { cols, rows, total: cols * rows };
+}
+
 /**
- * Scan a grid to find the first clear spot. Used as fallback when random
- * rejection sampling fails.
+ * Top-left of grid slot `slotIndex` (row-major, origin top-left of arena).
+ * @param {number} slotIndex
+ * @param {number} [cellStep]
+ * @returns {{ x: number, y: number }}
  */
+function gridCellOrigin(slotIndex, cellStep = WORLD_GRID_CELL) {
+  const { cols } = arenaGridMetrics(cellStep);
+  const row = Math.floor(slotIndex / cols);
+  const col = slotIndex % cols;
+  return { x: col * cellStep, y: row * cellStep };
+}
+
 function findSafeSpot(size, obstacles, players, bots, excludeId) {
-  const step = size + 10;
-  for (let x = 100; x < ARENA_W - 100; x += step) {
-    for (let y = 100; y < ARENA_H - 100; y += step) {
+  const step = WORLD_GRID_CELL;
+  for (let x = 0; x <= ARENA_W - size; x += step) {
+    for (let y = 0; y <= ARENA_H - size; y += step) {
       if (!isPositionBlocked(x, y, size, obstacles, players, bots, excludeId)) {
         return { x, y };
       }
     }
   }
-  return { x: 100, y: 100 }; // absolute last resort
+  return { x: 0, y: 0 }; // absolute last resort
 }
 
-/** Step between rigid bot-slot cell origins (no overlap at rest). */
-const BOT_GRID_CELL_STEP = PLAYER_SIZE + 24;
+/** Bot home tiles use the same step as every other entity (aligned columns/rows). */
+const BOT_GRID_CELL_STEP = WORLD_GRID_CELL;
 
 /**
- * Top-left corner of the bot slot at index `slotIndex` (row-major grid).
- * @param {number} slotIndex - 0-based slot in row-major order
- * @param {number} [cellStep]
- * @returns {{ x: number, y: number }}
+ * @deprecated Use gridCellOrigin — kept as alias for tests and bot spawn.
  */
 function botSlotCorner(slotIndex, cellStep = BOT_GRID_CELL_STEP) {
-  const margin = 100;
-  const cols = Math.max(1, Math.floor((ARENA_W - 2 * margin) / cellStep));
-  const row = Math.floor(slotIndex / cols);
-  const col = slotIndex % cols;
-  return { x: margin + col * cellStep, y: margin + row * cellStep };
+  return gridCellOrigin(slotIndex, cellStep);
 }
 
 /**
@@ -140,14 +152,14 @@ function botSlotCorner(slotIndex, cellStep = BOT_GRID_CELL_STEP) {
  */
 function pickBotGridSlots(botCount, obstacles, cellStep = BOT_GRID_CELL_STEP) {
   const picked = [];
-  const margin = 100;
-  const maxTry = 512; // scan past lower rows so high slot indices can be skipped when y exits arena
-  for (let slot = 0; slot < maxTry && picked.length < botCount; slot++) {
-    const { x, y } = botSlotCorner(slot, cellStep);
-    if (x + PLAYER_SIZE > ARENA_W - margin || y + PLAYER_SIZE > ARENA_H - margin) {
+  const { total } = arenaGridMetrics(cellStep);
+  for (let slot = 0; slot < total && picked.length < botCount; slot++) {
+    const { x, y } = gridCellOrigin(slot, cellStep);
+    if (x + PLAYER_SIZE > ARENA_W || y + PLAYER_SIZE > ARENA_H) {
       continue;
     }
-    if (!collidesWithObstacles(x, y, PLAYER_SIZE, obstacles, 10)) {
+    // pad 0: tile-aligned; pad>0 would mark neighbour cells as blocked
+    if (!collidesWithObstacles(x, y, PLAYER_SIZE, obstacles, 0)) {
       picked.push({ x, y, slotIndex: slot });
     }
   }
@@ -171,10 +183,10 @@ function spawnBotAtAnchor(
  * @returns {{ x: number, y: number }}
  */
 function spawnPosition(obstacles, players, bots, excludeId, rng = Math.random) {
-  const margin = 150;
+  const { total } = arenaGridMetrics(WORLD_GRID_CELL);
   for (let i = 0; i < 200; i++) {
-    const x = margin + rng() * (ARENA_W - 2 * margin);
-    const y = margin + rng() * (ARENA_H - 2 * margin);
+    const slot = Math.floor(rng() * total);
+    const { x, y } = gridCellOrigin(slot, WORLD_GRID_CELL);
     if (!isPositionBlocked(x, y, PLAYER_SIZE, obstacles, players, bots, excludeId)) {
       return { x, y };
     }
@@ -183,33 +195,62 @@ function spawnPosition(obstacles, players, bots, excludeId, rng = Math.random) {
 }
 
 /**
- * Generate a set of non-overlapping obstacles with a guaranteed player-wide
- * gap between every pair.
+ * Shuffle indices [0..n) in place (Fisher–Yates).
+ * @param {number[]} arr
+ * @param {function} rng
+ */
+function shuffleIndices(arr, rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = arr[i];
+    arr[i] = arr[j];
+    arr[j] = t;
+  }
+}
+
+/**
+ * One obstacle per grid cell — same 40×40 tile as players; no overlap, aligned rows/columns.
  * @param {function} rng - random number generator, default Math.random
  * @returns {Array} obstacles array
  */
 function generateObstacles(count = OBSTACLE_COUNT, rng = Math.random) {
+  const { total } = arenaGridMetrics(WORLD_GRID_CELL);
+  const take = Math.min(count, total);
+  const indices = Array.from({ length: total }, (_, i) => i);
+  shuffleIndices(indices, rng);
   const obstacles = [];
-  const margin = 120;
-  const pad = PLAYER_SIZE; // minimum gap between obstacles
-  let attempts = 0;
-  while (obstacles.length < count && attempts < 500) {
-    attempts++;
+  for (let k = 0; k < take; k++) {
+    const slot = indices[k];
+    const { x, y } = gridCellOrigin(slot, WORLD_GRID_CELL);
     const type = OBSTACLE_TYPES[Math.floor(rng() * OBSTACLE_TYPES.length)];
-    const sz   = OBS_SIZES[type];
-    const x    = margin + rng() * (ARENA_W - 2 * margin - sz.w);
-    const y    = margin + rng() * (ARENA_H - 2 * margin - sz.h);
-    let overlaps = false;
-    for (const ob of obstacles) {
-      if (aabbOverlap(x - pad, y - pad, sz.w + pad * 2, sz.h + pad * 2,
-          ob.x, ob.y, ob.w, ob.h)) {
-        overlaps = true;
-        break;
-      }
-    }
-    if (!overlaps) obstacles.push({ x, y, w: sz.w, h: sz.h, type });
+    const sz = OBS_SIZES[type];
+    obstacles.push({ x, y, w: sz.w, h: sz.h, type });
   }
   return obstacles;
+}
+
+/**
+ * Top-left for a coin (COIN_SIZE×COIN_SIZE) centered in a random clear grid cell.
+ * @param {Array} obstacles
+ * @param {function} [rng]
+ * @returns {{ x: number, y: number }}
+ */
+function randomClearCoinTopLeft(obstacles, rng = Math.random) {
+  const inset = (WORLD_GRID_CELL - COIN_SIZE) / 2;
+  const { total } = arenaGridMetrics(WORLD_GRID_CELL);
+  for (let i = 0; i < 200; i++) {
+    const slot = Math.floor(rng() * total);
+    const { x: cx, y: cy } = gridCellOrigin(slot, WORLD_GRID_CELL);
+    const x = cx + inset;
+    const y = cy + inset;
+    if (!obstacles.some(ob => aabbOverlap(x, y, COIN_SIZE, COIN_SIZE, ob.x, ob.y, ob.w, ob.h))) {
+      return { x, y };
+    }
+  }
+  return {
+    x: Math.max(0, Math.min(ARENA_W - COIN_SIZE, ARENA_W / 2 - COIN_SIZE / 2)),
+    y: Math.max(0, Math.min(ARENA_H - COIN_SIZE, ARENA_H / 2 - COIN_SIZE / 2)),
+  };
 }
 
 /**
@@ -243,11 +284,14 @@ module.exports = {
   INVULN_MS, MAX_PLAYERS, MAX_SHOTS, SHOOT_COOLDOWN_MS,
   OBSTACLE_COUNT, OBS_SIZE, OBSTACLE_TYPES, OBS_SIZES,
   VALID_DIRS, DIR_VECTORS, ALL_DIRS,
+  WORLD_GRID_CELL,
   BOT_GRID_CELL_STEP,
   // functions
   aabbOverlap, validateDir, wrapCoord,
   collidesWithObstacles, collidesWithEntities, isPositionBlocked,
   findSafeSpot, spawnPosition, generateObstacles,
+  arenaGridMetrics, gridCellOrigin,
   botSlotCorner, pickBotGridSlots, spawnBotAtAnchor,
+  randomClearCoinTopLeft,
   bounceVelocity, createBullets,
 };

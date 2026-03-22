@@ -20,7 +20,7 @@
   select    { flex:1; padding:12px; font-size:15px; border:1px solid #444; border-radius:8px; background:#1a1a1a; color:#fff; }
   .row      { display:flex; gap:8px; margin-bottom:10px; }
   #status { margin-top:16px; font-size:18px; color:#888; }
-  #cell-feedback { min-height:24px; margin-top:8px; font-size:14px; line-height:1.35; }
+  #cell-feedback { min-height:24px; margin-top:8px; font-size:14px; line-height:1.35; white-space:pre-line; }
 </style>
 </head>
 <body>
@@ -31,43 +31,84 @@
   <button class="stop" onclick="send('stop')">■ Stop Game</button>
   <button class="autoplay" onclick="send('autoplay')">🤖 Autoplay (32)</button>
   <div class="row">
-    <select id="cellsize">
-      <option value="24">24px screen cell (dense)</option>
-      <option value="30">30px</option>
-      <option value="40" selected>40px (default)</option>
-      <option value="48">48px</option>
-      <option value="64">64px</option>
-      <option value="80">80px</option>
-      <option value="120">120px</option>
-      <option value="240">240px (~17 cols @ 4096w)</option>
+    <select id="resolution">
+      <option value="1280x720">1280×720 (HD)</option>
+      <option value="1920x1080" selected>1920×1080 (Full HD)</option>
+      <option value="2560x1440">2560×1440 (QHD)</option>
+      <option value="3840x2160">3840×2160 (UHD 4K)</option>
+      <option value="4096x2160">4096×2160 (DCI 4K)</option>
+      <option value="7680x4320">7680×4320 (8K)</option>
     </select>
-    <button class="zoom" onclick="sendZoom()">🔍 Set</button>
+    <button class="zoom" onclick="sendResolution()">🖥 Set</button>
   </div>
   <div id="cell-feedback" aria-live="polite"></div>
   <div id="status">Connecting…</div>
 </div>
 <div style="position:fixed; bottom:8px; left:0; right:0; text-align:center; font-size:12px; color:#555;">
-  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" aria-label="GitHub repository" style="color:#555; text-decoration:none;"><i class="fa-brands fa-github" aria-hidden="true"></i></a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.21
+  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" aria-label="GitHub repository" style="color:#555; text-decoration:none;"><i class="fa-brands fa-github" aria-hidden="true"></i></a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.24
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
   const socket = io();
   const cellFeedback = document.getElementById('cell-feedback');
+  const resolutionSelect = document.getElementById('resolution');
   socket.emit('join-admin');
   socket.on('connect', () => document.getElementById('status').textContent = 'Connected');
   socket.on('gameStateChange', s => document.getElementById('status').textContent = 'State: ' + s);
-  socket.on('admin-cell-size-ack', (data) => {
+
+  function parseResolutionPreset(value) {
+    const match = /^(\d{3,5})x(\d{3,5})$/.exec(String(value || ''));
+    if (!match) return null;
+    return { width: Number(match[1]), height: Number(match[2]) };
+  }
+
+  function fitDisplayResolution(width, height) {
+    const scale = Math.min(width / 1920, height / 1080);
+    return { width: 1920 * scale, height: 1080 * scale };
+  }
+
+  function arenaContentWidthCss(displayW) {
+    return displayW * (1600 / 1920);
+  }
+
+  function formatCellSummary(targetWidth, targetHeight, arenaColumns) {
+    const fitted = fitDisplayResolution(targetWidth, targetHeight);
+    const cellPx =
+      arenaColumns > 0 ? arenaContentWidthCss(fitted.width) / arenaColumns : 0;
+    return (
+      targetWidth + '×' + targetHeight +
+      ' target — ' + arenaColumns + ' env columns' +
+      ' (~' + cellPx.toFixed(1) + ' px / 40wu cell)'
+    );
+  }
+
+  socket.on('admin-display-config', (data) => {
+    if (!data) return;
+    const presetValue = data.targetWidth + 'x' + data.targetHeight;
+    if ([...resolutionSelect.options].some((option) => option.value === presetValue)) {
+      resolutionSelect.value = presetValue;
+    }
+    cellFeedback.style.color = '#888';
+    cellFeedback.textContent =
+      'Current: ' +
+      formatCellSummary(data.targetWidth, data.targetHeight, data.arenaColumns);
+  });
+
+  socket.on('admin-display-resolution-ack', (data) => {
     if (!data) return;
     if (data.ok) {
       cellFeedback.style.color = '#6d6';
+      const summary = formatCellSummary(data.targetWidth, data.targetHeight, data.arenaColumns);
       if (data.displayCount === 0) {
-        cellFeedback.textContent = data.cellBasePx + 'px saved — no /display.html connected (open projector tab, then Set again)';
+        cellFeedback.textContent = summary + ' saved — no /display.html connected (open projector tab, then Set again)';
       } else {
-        cellFeedback.textContent = data.cellBasePx + 'px applied to ' + data.displayCount + ' display' + (data.displayCount === 1 ? '' : 's');
+        cellFeedback.textContent = summary + ' applied to ' + data.displayCount + ' display' + (data.displayCount === 1 ? '' : 's');
       }
     } else {
       cellFeedback.style.color = '#e66';
-      cellFeedback.textContent = data.error === 'password' ? 'Wrong password — cell size not sent' : 'Invalid size (use 8–512 px)';
+      cellFeedback.textContent = data.error === 'password'
+        ? 'Wrong password — resolution not sent'
+        : 'Invalid resolution preset';
     }
   });
   function send(action) {
@@ -75,10 +116,9 @@
     const evMap = { start: 'admin-start', stop: 'admin-stop', autoplay: 'admin-autoplay' };
     socket.emit(evMap[action], pw);
   }
-  function sendZoom() {
+  function sendResolution() {
     const pw = document.getElementById('pw').value;
-    const cellBasePx = parseFloat(document.getElementById('cellsize').value);
-    socket.emit('admin-cell-size', pw, cellBasePx);
+    socket.emit('admin-display-resolution', pw, resolutionSelect.value);
   }
 </script>
 </body>

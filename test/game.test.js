@@ -2,12 +2,14 @@
 
 const {
   ARENA_W, ARENA_H, PLAYER_SIZE, BULLET_SPEED, BULLET_MAX_DIST,
-  OBSTACLE_COUNT, OBS_SIZE, OBSTACLE_TYPES, BOT_GRID_CELL_STEP,
+  OBSTACLE_COUNT, OBS_SIZE, OBSTACLE_TYPES, BOT_GRID_CELL_STEP, WORLD_GRID_CELL,
   aabbOverlap, validateDir, wrapCoord,
   collidesWithObstacles, collidesWithEntities, isPositionBlocked,
   findSafeSpot, spawnPosition, generateObstacles,
   botSlotCorner, pickBotGridSlots, spawnBotAtAnchor,
+  randomClearCoinTopLeft,
   bounceVelocity, createBullets,
+  COIN_SIZE,
 } = require('../src/game');
 
 // ── aabbOverlap ──────────────────────────────────────────────────────────────
@@ -191,19 +193,20 @@ describe('findSafeSpot', () => {
     expect(pos).toHaveProperty('y');
   });
 
-  test('returns safe position when arena is mostly clear', () => {
+  test('returns grid-aligned position when arena is clear', () => {
     const pos = findSafeSpot(PLAYER_SIZE, [], {}, {}, null);
-    expect(pos.x).toBeGreaterThanOrEqual(100);
-    expect(pos.y).toBeGreaterThanOrEqual(100);
-    expect(pos.x).toBeLessThan(ARENA_W - 100);
-    expect(pos.y).toBeLessThan(ARENA_H - 100);
+    expect(pos.x % WORLD_GRID_CELL).toBe(0);
+    expect(pos.y % WORLD_GRID_CELL).toBe(0);
+    expect(pos.x).toBeGreaterThanOrEqual(0);
+    expect(pos.y).toBeGreaterThanOrEqual(0);
+    expect(pos.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W);
+    expect(pos.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
   });
 
-  test('returns last-resort {100,100} when arena is fully blocked', () => {
-    // Obstacle larger than arena — every grid position is blocked → exercises fallback line
+  test('returns last-resort {0,0} when arena is fully blocked', () => {
     const bigObstacles = [{ x: -50, y: -50, w: ARENA_W + 100, h: ARENA_H + 100 }];
     const pos = findSafeSpot(PLAYER_SIZE, bigObstacles, {}, {}, null);
-    expect(pos).toEqual({ x: 100, y: 100 });
+    expect(pos).toEqual({ x: 0, y: 0 });
   });
 });
 
@@ -269,14 +272,15 @@ describe('generateObstacles', () => {
     expect(obs.length).toBe(4);
   });
 
-  test('obstacles stay within arena margins', () => {
-    const margin = 120;
+  test('obstacles snap to world grid and stay inside arena', () => {
     const obs = generateObstacles();
     for (const o of obs) {
-      expect(o.x).toBeGreaterThanOrEqual(margin);
-      expect(o.y).toBeGreaterThanOrEqual(margin);
-      expect(o.x + o.w).toBeLessThanOrEqual(ARENA_W - margin);
-      expect(o.y + o.h).toBeLessThanOrEqual(ARENA_H - margin);
+      expect(o.x % WORLD_GRID_CELL).toBe(0);
+      expect(o.y % WORLD_GRID_CELL).toBe(0);
+      expect(o.x).toBeGreaterThanOrEqual(0);
+      expect(o.y).toBeGreaterThanOrEqual(0);
+      expect(o.x + o.w).toBeLessThanOrEqual(ARENA_W);
+      expect(o.y + o.h).toBeLessThanOrEqual(ARENA_H);
     }
   });
 });
@@ -290,12 +294,12 @@ describe('spawnPosition', () => {
     expect(pos).toHaveProperty('y');
   });
 
-  test('spawn is within arena margins', () => {
+  test('spawn is grid-aligned and inside arena', () => {
     const pos = spawnPosition([], {}, {}, null);
-    expect(pos.x).toBeGreaterThan(0);
-    expect(pos.y).toBeGreaterThan(0);
-    expect(pos.x).toBeLessThan(ARENA_W);
-    expect(pos.y).toBeLessThan(ARENA_H);
+    expect(pos.x % WORLD_GRID_CELL).toBe(0);
+    expect(pos.y % WORLD_GRID_CELL).toBe(0);
+    expect(pos.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W);
+    expect(pos.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
   });
 
   test('spawn does not collide with obstacles', () => {
@@ -320,29 +324,25 @@ describe('spawnPosition', () => {
   });
 
   test('after 200 failed random tries uses findSafeSpot fallback', () => {
-    const obs = [{ x: 780, y: 780, w: 100, h: 100 }];
-    // Two rng() calls per try: x then y. Force (800, 800) every time — inside the obstacle.
+    const obs = [{ x: 0, y: 0, w: 40, h: 40 }];
     let call = 0;
-    const rngBlockedInObs = () => {
+    const rngAlwaysBlockedSlot = () => {
       call += 1;
-      return call % 2 === 1 ? 0.5 : 650 / 780;
+      return 0; // slot 0 = (0,0) always blocked by obstacle
     };
-    const pos = spawnPosition(obs, {}, {}, null, rngBlockedInObs);
-    expect(call).toBeGreaterThanOrEqual(400);
-    expect(collidesWithObstacles(pos.x, pos.y, PLAYER_SIZE, obs)).toBe(false);
+    const pos = spawnPosition(obs, {}, {}, null, rngAlwaysBlockedSlot);
+    expect(call).toBeGreaterThanOrEqual(200);
+    expect(isPositionBlocked(pos.x, pos.y, PLAYER_SIZE, obs, {}, {}, null)).toBe(false);
   });
 });
 
 // ── bounceVelocity ───────────────────────────────────────────────────────────
 
 describe('bounceVelocity', () => {
-  // Obstacle far from test entities (used for "no obstacle" scenarios)
-  const farObs = [{ x: 900, y: 900, w: 50, h: 50 }];
+  const farObs = [{ x: 900, y: 900, w: 40, h: 40 }];
 
-  // Obstacle at (300, 200) — entity hits it from the left, moving right
-  // Entity pos (256, 200) size=40 → right edge at 296, touching obstacle at 300
-  // vx=4, bounce-back at (252, 200) → right edge at 292 — clear of 300
-  const rightObs = [{ x: 300, y: 200, w: 50, h: 50 }];
+  // Obstacle 300–340; entity 256–296; vx=4 → bounce (252,200) clears obstacle left edge
+  const rightObs = [{ x: 300, y: 200, w: 40, h: 40 }];
 
   test('reverses velocity when bounce-back position is clear', () => {
     const result = bounceVelocity(256, 200, 4, 0, PLAYER_SIZE, rightObs);
@@ -351,12 +351,10 @@ describe('bounceVelocity', () => {
   });
 
   test('stops velocity when bounce-back is also blocked', () => {
-    // Entity sandwiched: obstacle on right (300,200) and on left (210,200)
     const twoObs = [
-      { x: 300, y: 200, w: 50, h: 50 },
-      { x: 210, y: 200, w: 50, h: 50 },
+      { x: 300, y: 200, w: 40, h: 40 },
+      { x: 250, y: 200, w: 40, h: 40 },
     ];
-    // At x=256 moving right (4,0): bounce-back at (252,200) → left edge 252, hits ob2 right edge 260
     const result = bounceVelocity(256, 200, 4, 0, PLAYER_SIZE, twoObs);
     expect(result.vx).toBe(0);
     expect(result.vy).toBe(0);
@@ -370,9 +368,7 @@ describe('bounceVelocity', () => {
   });
 
   test('reverses y velocity when bounce-back on y axis is clear', () => {
-    // Obstacle at (600, 300), entity at (600, 256) moving down (0,4)
-    // bounce-back at (600, 252) — top edge 252, obstacle at 300 — clear
-    const downObs = [{ x: 600, y: 300, w: 50, h: 50 }];
+    const downObs = [{ x: 600, y: 300, w: 40, h: 40 }];
     const result = bounceVelocity(600, 256, 0, 4, PLAYER_SIZE, downObs);
     expect(result.vx + 0).toBe(0);
     expect(result.vy).toBe(-4);
@@ -389,12 +385,8 @@ describe('botSlotCorner', () => {
     expect(b.y).toBe(a.y);
   });
 
-  test('first slot is inside arena margins', () => {
-    const p = botSlotCorner(0);
-    expect(p.x).toBeGreaterThanOrEqual(100);
-    expect(p.y).toBeGreaterThanOrEqual(100);
-    expect(p.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W);
-    expect(p.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
+  test('slot 0 is top-left grid origin', () => {
+    expect(botSlotCorner(0)).toEqual({ x: 0, y: 0 });
   });
 });
 
@@ -415,24 +407,71 @@ describe('pickBotGridSlots', () => {
     expect(slots[0].slotIndex).toBeLessThan(slots[1].slotIndex);
   });
 
-  test('skips grid slots outside arena margin (high row indices)', () => {
+  test('slots fit fully inside arena', () => {
     const slots = pickBotGridSlots(2, []);
     for (const s of slots) {
-      expect(s.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H - 100);
-      expect(s.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W - 100);
+      expect(s.x).toBeGreaterThanOrEqual(0);
+      expect(s.y).toBeGreaterThanOrEqual(0);
+      expect(s.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W);
+      expect(s.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
     }
   });
 
-  test('large botCount scans high slot indices past non-fitting rows', () => {
+  test('large botCount fills up to min(requested, grid cells)', () => {
     const slots = pickBotGridSlots(400, []);
-    expect(slots.length).toBe(294);
+    expect(slots.length).toBe(400);
   });
 
   test('skips slots occupied by obstacles', () => {
-    const obs = [{ x: 100, y: 100, w: PLAYER_SIZE + 20, h: PLAYER_SIZE + 20 }];
+    const obs = [{ x: 80, y: 80, w: 40, h: 40 }];
     const slots = pickBotGridSlots(3, obs);
-    expect(slots.every(s => s.x !== 100 || s.y !== 100)).toBe(true);
+    expect(slots.every(s => s.x !== 80 || s.y !== 80)).toBe(true);
     expect(slots.length).toBe(3);
+  });
+
+  test('skips grid cells where player box would extend past arena (must scan past ragged edge)', () => {
+    const cellStep = 29;
+    // First row has 55 cols (slot 0..54); slot 54 overflows width — need ≥55 picks to skip it and still fill.
+    const slots = pickBotGridSlots(55, [], cellStep);
+    expect(slots.length).toBe(55);
+    for (const s of slots) {
+      expect(s.x + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_W);
+      expect(s.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
+    }
+  });
+
+  test('skips grid cells where player box would extend past arena height', () => {
+    const cellStep = 36;
+    const cols = Math.floor(ARENA_W / cellStep);
+    const rows = Math.floor(ARENA_H / cellStep);
+    const fullGrid = cols * rows;
+    const lastRowSlots = cols;
+    const maxValid = fullGrid - lastRowSlots;
+    const slots = pickBotGridSlots(maxValid, [], cellStep);
+    expect(slots.length).toBe(maxValid);
+    for (const s of slots) {
+      expect(s.y + PLAYER_SIZE).toBeLessThanOrEqual(ARENA_H);
+    }
+  });
+});
+
+describe('randomClearCoinTopLeft', () => {
+  test('after many failed random tries returns arena-centered fallback', () => {
+    const obs = [{ x: 0, y: 0, w: ARENA_W, h: ARENA_H }];
+    const rng = () => 0;
+    const p = randomClearCoinTopLeft(obs, rng);
+    const expectX = Math.max(0, Math.min(ARENA_W - COIN_SIZE, ARENA_W / 2 - COIN_SIZE / 2));
+    const expectY = Math.max(0, Math.min(ARENA_H - COIN_SIZE, ARENA_H / 2 - COIN_SIZE / 2));
+    expect(p.x).toBeCloseTo(expectX, 5);
+    expect(p.y).toBeCloseTo(expectY, 5);
+  });
+
+  test('returns inset position when cell is clear', () => {
+    const p = randomClearCoinTopLeft([], () => 0);
+    expect(p.x).toBeGreaterThanOrEqual(0);
+    expect(p.y).toBeGreaterThanOrEqual(0);
+    expect(p.x + COIN_SIZE).toBeLessThanOrEqual(ARENA_W);
+    expect(p.y + COIN_SIZE).toBeLessThanOrEqual(ARENA_H);
   });
 });
 

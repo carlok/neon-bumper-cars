@@ -119,7 +119,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 | `server.js` | Express + Socket.IO entry point, game loop |
 | `src/config.js` | All constants and emoji/name data pools |
 | `src/game.js` | Pure game-logic functions (collision, spawn, obstacles) |
-| `src/displayCalibrate.js` | Display zoom: resolution multiplier **k** and arena-aware cell math (tested; mirror in `public/display.html`) |
+| `src/displayCalibrate.js` | Display calibration: arena column count, output resolution fit, sidebar-aware camera zoom, `computeDisplayCameraZoom` (legacy cell-base math); mirrored in `public/display.html` |
 | `src/bot.js` | Bot AI (`isBotDirBlocked`, `updateBotAI`) |
 | `test/game.test.js` | Unit tests for `src/game.js` |
 | `test/bot.test.js` | Unit tests for `src/bot.js` |
@@ -137,7 +137,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 podman compose --profile test run --rm test
 ```
 
-Coverage targets: 100% functions, ≥99% statements across `src/`.
+Coverage is run on `src/**/*.js`. Line and statement coverage for all listed files is **100%** in CI; branch coverage is slightly lower on `displayCalibrate.js` and `game.js` (complex conditionals). The `test` compose service bind-mounts `package.json` so the printed npm version matches your tree without rebuilding on version-only bumps.
 
 ## Features
 
@@ -151,8 +151,10 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Terrain background** — lightweight tiled ground texture with faint emoji patches
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
-- **Adaptive render resolution** — display canvas scales to native pixels on HD, 2K, 4K, and Retina displays; emojis stay sharp at any screen size
-- **Display cell base (admin)** — sets the **CSS pixel width** of a reference strip (**40** world units) measured on the **arena slice** of the fitted canvas (arena is **1600** of **1920** logical width; sidebar stays readable). Zoom (clamped **0.2–16**) is `cellBase × 1600 / (40 × arenaCssWidth)` with `arenaCssWidth = cssCanvasWidth × (1600/1920)` — equivalent to scaling by full canvas width but calibrated on playfield only. **Larger cell base ⇒ higher zoom ⇒ fewer world units visible ⇒ bigger emojis.** When zoom **> 1**, the camera is **right-anchored** so the leaderboard column stays on screen (see `displayCameraCenterX` / `visibleArenaRefCellsAtZoom` in `src/displayCalibrate.js`, mirrored in `public/display.html`). Display prefers `canvas.clientWidth`. Admin **Set**: range **8–512**, password + display-tab checks. Recalculates on resize
+- **Adaptive render resolution** — Phaser internal buffer scales with device pixel ratio and the CSS size of `#phaser-root` so emojis stay sharp on HD / 2K / 4K / Retina
+- **Display output resolution (admin)** — Admin picks a **preset** (720p … 8K) and **Set** (password); the server broadcasts `display-config` to all `/display.html` clients. The display page sizes **`#phaser-root`** to the **fitted** 16:9 size for that preset, **clamped** to the browser window, then Phaser **Scale.FIT** fills that box — so Full HD vs 4K presets change the **physical** scale on the projector, not only the numbers in the admin hint
+- **Arena column zoom (env)** — `ARENA_COLUMNS` (or server default, **8–40**) sets how many **40**-world-unit strips should be visible across the **arena** (not the full 1920-wide layout). Zoom is **sidebar-aware**: `1920 / (40×cols + 320)` so the visible arena width matches **`40×cols`** while the **320**-unit leaderboard/QR column stays on screen when **zoom > 1** (`displayZoomForArenaColumns`, `displayCameraCenterX` in `src/displayCalibrate.js`, mirrored in `public/display.html`). Admin feedback shows **~px per 40wu cell** using the **arena slice** only: `fittedWidth × (1600/1920) / cols`
+- **`computeDisplayCameraZoom` (library)** — Optional cell-base calibration (`cellBasePx` on arena CSS width → zoom **0.2–16**); still exported for tooling/tests; the live display path uses **column count + resolution preset** above
 - **Wrap-around arena** (1600×1080 logical) — exit one side, appear on the other
 - **Leaderboard** — live rank, score, lives, and remaining shots for each player
 - **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)

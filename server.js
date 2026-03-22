@@ -9,13 +9,14 @@ const {
   ARENA_W, ARENA_H, PLAYER_SIZE, PLAYER_SPEED, COIN_SIZE, INVULN_MS,
   ADMIN_PASSWORD, TICK_RATE, MAX_PLAYERS, BULLET_SPEED, BULLET_SIZE,
   BULLET_MAX_DIST, SHOOT_COOLDOWN_MS, MAX_SHOTS, OBSTACLE_COUNT,
-  BOT_COUNT, BOT_EMOJIS,
+  BOT_COUNT, BOT_EMOJIS, DISPLAY_ARENA_COLUMNS,
   NEON_COLORS, PLAYER_EMOJIS, COIN_EMOJIS,
   NAME_ADJ, NAME_NOUN,
 } = require('./src/config');
 const {
   aabbOverlap, generateObstacles, spawnPosition,
   pickBotGridSlots, spawnBotAtAnchor, botSlotCorner,
+  randomClearCoinTopLeft,
 } = require('./src/game');
 const { updateBotAI } = require('./src/bot');
 
@@ -32,6 +33,8 @@ const bots        = {};        // botId    → bot
 let obstacles     = [];        // { x, y, w, h, type }
 const coins       = [];        // [{ x, y, emoji }, ...]  — count scales with player count
 const bullets     = [];        // { x, y, vx, vy, ownerId, ownerColor, dist }
+const DEFAULT_DISPLAY_RESOLUTION = Object.freeze({ width: 1920, height: 1080 });
+let displayResolution = { ...DEFAULT_DISPLAY_RESOLUTION };
 let colorIndex    = 0;
 let autoplayActive = false;
 const AUTOPLAY_COUNT = MAX_PLAYERS; // 32 fake players for stress testing
@@ -53,6 +56,24 @@ function randomName() {
   const adj  = NAME_ADJ [Math.floor(Math.random() * NAME_ADJ .length)];
   const noun = NAME_NOUN[Math.floor(Math.random() * NAME_NOUN.length)];
   return `${adj} ${noun}`;
+}
+
+function parseDisplayResolutionPreset(preset) {
+  const match = /^(\d{3,5})x(\d{3,5})$/.exec(String(preset || '').trim());
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width < 640 || height < 480 || width > 15360 || height > 8640) return null;
+  return { width, height };
+}
+
+function currentDisplayConfig() {
+  return {
+    targetWidth: displayResolution.width,
+    targetHeight: displayResolution.height,
+    arenaColumns: DISPLAY_ARENA_COLUMNS,
+  };
 }
 
 // ── Obstacle count helper ─────────────────────────────────────────────
@@ -98,14 +119,8 @@ function coinTarget() {
   return Math.max(1, Math.ceil(alive / 2));
 }
 function makeCoin() {
-  for (let i = 0; i < 200; i++) {
-    const x = 80 + Math.random() * (ARENA_W - 160);
-    const y = 80 + Math.random() * (ARENA_H - 160);
-    if (!obstacles.some(ob => aabbOverlap(x, y, COIN_SIZE, COIN_SIZE, ob.x, ob.y, ob.w, ob.h))) {
-      return { x, y, emoji: randomCoinEmoji() };
-    }
-  }
-  return { x: ARENA_W / 2, y: ARENA_H / 2, emoji: randomCoinEmoji() };
+  const pos = randomClearCoinTopLeft(obstacles);
+  return { ...pos, emoji: randomCoinEmoji() };
 }
 function maintainCoins() {
   while (coins.length < coinTarget()) {
@@ -162,13 +177,14 @@ io.on('connection', (socket) => {
   socket.on('join-display', () => {
     console.log(`[DISPLAY] Display joined: ${socket.id}`);
     socket.join('display');
-    socket.emit('init', { obstacles, gameState, coins, bots });
+    socket.emit('init', { obstacles, gameState, coins, bots, displayConfig: currentDisplayConfig() });
   });
 
   socket.on('join-admin', () => {
     console.log(`[ADMIN] Admin joined: ${socket.id}`);
     socket.join('admin');
     socket.emit('gameStateChange', gameState);
+    socket.emit('admin-display-config', currentDisplayConfig());
   });
 
   socket.on('join-player', () => {
@@ -259,20 +275,25 @@ io.on('connection', (socket) => {
     io.emit('gameStateChange', gameState);
   });
 
-  socket.on('admin-cell-size', (pw, cellBasePx) => {
+  socket.on('admin-display-resolution', (pw, preset) => {
     if (pw !== ADMIN_PASSWORD) {
-      socket.emit('admin-cell-size-ack', { ok: false, error: 'password' });
+      socket.emit('admin-display-resolution-ack', { ok: false, error: 'password' });
       return;
     }
-    const s = Number(cellBasePx);
-    if (!Number.isFinite(s) || s < 8 || s > 512) {
-      socket.emit('admin-cell-size-ack', { ok: false, error: 'range' });
+    const nextResolution = parseDisplayResolutionPreset(preset);
+    if (!nextResolution) {
+      socket.emit('admin-display-resolution-ack', { ok: false, error: 'resolution' });
       return;
     }
+    displayResolution = nextResolution;
     const displayCount = io.sockets.adapter.rooms.get('display')?.size ?? 0;
-    console.log(`[ADMIN] admin-cell-size cellBasePx=${s} displaySockets=${displayCount}`);
-    io.to('display').emit('display-cell-base', s);
-    socket.emit('admin-cell-size-ack', { ok: true, cellBasePx: s, displayCount });
+    console.log(
+      `[ADMIN] admin-display-resolution preset=${preset} arenaColumns=${DISPLAY_ARENA_COLUMNS} displaySockets=${displayCount}`
+    );
+    const config = currentDisplayConfig();
+    io.to('display').emit('display-config', config);
+    io.to('admin').emit('admin-display-config', config);
+    socket.emit('admin-display-resolution-ack', { ok: true, displayCount, ...config });
   });
 
   socket.on('swipe', (dir) => {

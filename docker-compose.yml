@@ -47,6 +47,7 @@ services:
       - NEON_BUMPER_TESTS_IN_CONTAINER=1
     command: ["npm", "run", "test:coverage"]
     volumes:
+      - ./package.json:/app/package.json
       - ./src:/app/src
       - ./test:/app/test
       - ./scripts:/app/scripts
