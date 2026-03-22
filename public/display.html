@@ -46,6 +46,37 @@ class GameScene extends Phaser.Scene {
     this.playerGfx = {};
     this.trailEmitters = {};
 
+    // ── Terrain background (lightweight tiled ground texture) ────────
+    // Draw a grid of faint terrain characters — computed once, very cheap
+    const terrainTiles = ['░', '▒', '·', '∙', '╌', '░'];
+    const terrainColors = ['#0a1a0a', '#0d1f0d', '#0a180f', '#0f1a0a', '#0b1b0b', '#0e1c0e'];
+    const tileSize = 80;
+    for (let tx = 0; tx < 1920; tx += tileSize) {
+      for (let ty = 0; ty < 1080; ty += tileSize) {
+        const idx = ((tx / tileSize) + (ty / tileSize)) % terrainTiles.length;
+        // Slight random variation for organic look
+        const jitter = ((tx * 7 + ty * 13) % 6);
+        const tile = terrainTiles[(idx + jitter) % terrainTiles.length];
+        const color = terrainColors[(idx + jitter) % terrainColors.length];
+        this.add.text(tx + tileSize / 2, ty + tileSize / 2, tile, {
+          fontSize: '48px', fontFamily: 'monospace', color: color
+        }).setOrigin(0.5).setDepth(0).setAlpha(0.6);
+      }
+    }
+
+    // Draw a few larger faint terrain emoji patches for variety
+    const patches = [
+      { e: '🌿', c: 12 }, { e: '🌾', c: 8 }, { e: '🪨', c: 6 }, { e: '🏜️', c: 5 }
+    ];
+    for (const patch of patches) {
+      for (let i = 0; i < patch.c; i++) {
+        const px = 60 + Math.floor(((i * 347 + patch.c * 113) % 1800));
+        const py = 60 + Math.floor(((i * 521 + patch.c * 79) % 960));
+        this.add.text(px, py, patch.e, { fontSize: '28px' })
+          .setOrigin(0.5).setDepth(1).setAlpha(0.15);
+      }
+    }
+
     // Obstacle text objects
     this.obsTexts = [];
     // Will be created once obstacles arrive
