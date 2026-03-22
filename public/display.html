@@ -49,6 +49,7 @@ class GameScene extends Phaser.Scene {
   create() {
     this.playerGfx = {};
     this.trailEmitters = {};
+    this.botAuras = {};   // pulsing aura Graphics per bot
     this.bulletGfx = [];  // array of Phaser graphics for bullets
 
     // ── Layout constants ──────────────────────────────────────────────
@@ -165,7 +166,7 @@ class GameScene extends Phaser.Scene {
     this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
       fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.13', {
+    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.14', {
       fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
@@ -228,6 +229,10 @@ class GameScene extends Phaser.Scene {
           this.trailEmitters[id].stop();
           delete this.trailEmitters[id];
         }
+        if (this.botAuras[id]) {
+          this.botAuras[id].destroy();
+          delete this.botAuras[id];
+        }
         continue;
       }
       if (!this.playerGfx[id]) {
@@ -265,6 +270,22 @@ class GameScene extends Phaser.Scene {
       if (this.trailEmitters[id]) {
         this.trailEmitters[id].setPosition(sp.x + 20, sp.y + 20);
       }
+
+      // Bot aura — pulsing double-rect so bots are unmistakable
+      if (sp.isBot) {
+        if (!this.botAuras[id]) {
+          this.botAuras[id] = this.add.graphics().setDepth(11);
+        }
+        const aura = this.botAuras[id];
+        const pulse = 0.5 + 0.5 * Math.sin(this.time.now / 140);
+        aura.clear();
+        // Inner tight square
+        aura.lineStyle(2 + pulse * 2, 0xff2200, 0.7 + pulse * 0.3);
+        aura.strokeRect(sp.x - 4, sp.y - 4, 48, 48);
+        // Outer glow ring
+        aura.lineStyle(1, 0xff6600, 0.25 + pulse * 0.25);
+        aura.strokeRect(sp.x - 9, sp.y - 9, 58, 58);
+      }
     }
 
     // Remove disconnected
@@ -275,6 +296,10 @@ class GameScene extends Phaser.Scene {
         if (this.trailEmitters[id]) {
           this.trailEmitters[id].stop();
           delete this.trailEmitters[id];
+        }
+        if (this.botAuras[id]) {
+          this.botAuras[id].destroy();
+          delete this.botAuras[id];
         }
       }
     }
