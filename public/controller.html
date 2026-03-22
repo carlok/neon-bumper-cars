@@ -377,6 +377,7 @@ function flash() {
 
 // ── Swipe Detection ───────────────────────────────────────────────────
 let touchStartX = 0, touchStartY = 0;
+let lastDir = 'up';
 
 // Let touch events pass through to buttons (join + rejoin)
 function isTouchOnButton(e) {
@@ -406,7 +407,13 @@ document.addEventListener('touchend', (e) => {
 
   // Tap (no significant movement) → shoot
   if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) {
+    console.log('[SHOOT] Tap detected, emitting shoot');
     socket.emit('shoot');
+    // Immediate feedback (server ack adds second confirmation)
+    sfx.shoot();
+    vibe(VIBE.shoot);
+    dirIndicator.textContent = '💥';
+    setTimeout(() => dirIndicator.textContent = arrows[lastDir] || '↑', 300);
     return;
   }
 
@@ -419,6 +426,7 @@ document.addEventListener('touchend', (e) => {
   socket.emit('swipe', dir);
   sfx.swipe();
   vibe(VIBE.swipe);
+  lastDir = dir;
   dirIndicator.textContent = arrows[dir];
 }, { passive: false });
 

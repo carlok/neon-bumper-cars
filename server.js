@@ -220,6 +220,8 @@ function spawnBots() {
       alive: true,
       retargetAt: 0,  // when to pick a new direction
       stuckSince: 0,  // timestamp when bot got stuck (0 = not stuck)
+      lastX: pos.x,   // track position for stuck detection
+      lastY: pos.y,
     };
     console.log(`[BOT] Spawned bot ${id} at (${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}) emoji=${bots[id].emoji}`);
   }
@@ -389,9 +391,16 @@ io.on('connection', (socket) => {
   // Player shoot — single tap fires in facing direction
   socket.on('shoot', () => {
     const p = players[socket.id];
-    if (!p || !p.alive || gameState !== 'PLAYING') return;
+    if (!p || !p.alive || gameState !== 'PLAYING') {
+      console.log(`[SHOOT] Rejected: id=${socket.id}, hasPlayer=${!!p}, alive=${p?.alive}, gameState=${gameState}`);
+      return;
+    }
     const now = Date.now();
-    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) return;
+    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) {
+      console.log(`[SHOOT] Cooldown: ${socket.id}, remaining=${SHOOT_COOLDOWN_MS - (now - p.lastShotAt)}ms`);
+      return;
+    }
+    console.log(`[SHOOT] ${p.name} fired facing=${p.facing}`);
     p.lastShotAt = now;
     const facingDirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
     const fd = facingDirs[p.facing] || [0, -1];
@@ -574,19 +583,26 @@ setInterval(() => {
       bot.y = bny;
     }
 
-    // Stuck detection: if bot hasn't moved for 2 seconds, respawn it
-    if (bot.vx === 0 && bot.vy === 0) {
+    // Stuck detection: if bot position hasn't changed for 1.5s, respawn
+    const moved = Math.abs(bot.x - bot.lastX) > 2 || Math.abs(bot.y - bot.lastY) > 2;
+    if (moved) {
+      bot.lastX = bot.x;
+      bot.lastY = bot.y;
+      bot.stuckSince = 0;
+    } else {
       if (bot.stuckSince === 0) bot.stuckSince = now;
-      else if (now - bot.stuckSince > 2000) {
+      else if (now - bot.stuckSince > 1500) {
         const newPos = spawnPlayer(botId);
         bot.x = newPos.x;
         bot.y = newPos.y;
+        bot.lastX = newPos.x;
+        bot.lastY = newPos.y;
+        bot.vx = 0;
+        bot.vy = 0;
         bot.stuckSince = 0;
         bot.retargetAt = 0;
         console.log(`[BOT] ${botId} was stuck, respawned at (${newPos.x.toFixed(0)}, ${newPos.y.toFixed(0)})`);
       }
-    } else {
-      bot.stuckSince = 0;
     }
 
     // Bot-player collision: bot chases and damages players
