@@ -291,7 +291,8 @@ setInterval(() => {
     const bot = bots[botId];
     if (!bot.alive) continue;
 
-    updateBotAI(bot, now, players, obstacles);
+    const coinObs = coins.map(c => ({ x: c.x, y: c.y, w: COIN_SIZE, h: COIN_SIZE }));
+    updateBotAI(bot, now, players, [...obstacles, ...coinObs]);
 
     let bnx = bot.x + bot.vx;
     let bny = bot.y + bot.vy;

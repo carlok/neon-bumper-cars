@@ -1,6 +1,6 @@
 {
   "name": "neon-survival-bumper-cars",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "description": "Multiplayer WebSocket bumper cars game with mobile controllers",
   "main": "server.js",
   "scripts": {
