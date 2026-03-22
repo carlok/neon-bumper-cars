@@ -89,10 +89,11 @@ function generateObstacles() {
     const sz = OBS_SIZES[type];
     const x = margin + Math.random() * (ARENA_W - 2 * margin - sz.w);
     const y = margin + Math.random() * (ARENA_H - 2 * margin - sz.h);
-    // Check overlap with existing
+    // Check overlap with existing (padded by PLAYER_SIZE so players can always pass between)
     let overlaps = false;
+    const pad = PLAYER_SIZE;
     for (const ob of obstacles) {
-      if (aabbOverlap(x, y, sz.w, sz.h, ob.x, ob.y, ob.w, ob.h)) {
+      if (aabbOverlap(x - pad, y - pad, sz.w + pad * 2, sz.h + pad * 2, ob.x, ob.y, ob.w, ob.h)) {
         overlaps = true;
         break;
       }
@@ -112,6 +113,7 @@ function spawnCoin() {
     attempts++;
     const x = 80 + Math.random() * (ARENA_W - 160);
     const y = 80 + Math.random() * (ARENA_H - 160);
+    // Only check obstacles for coins (overlapping players/bots is fine)
     let blocked = false;
     for (const ob of obstacles) {
       if (aabbOverlap(x, y, COIN_SIZE, COIN_SIZE, ob.x, ob.y, ob.w, ob.h)) {
@@ -124,25 +126,47 @@ function spawnCoin() {
   coin = { x: ARENA_W / 2, y: ARENA_H / 2, emoji: randomCoinEmoji() };
 }
 
+// ── Check if a position overlaps any obstacle, player, or bot ────────
+function isPositionBlocked(x, y, size, excludeId) {
+  for (const ob of obstacles) {
+    if (aabbOverlap(x, y, size, size, ob.x, ob.y, ob.w, ob.h)) return true;
+  }
+  for (const id in players) {
+    if (id === excludeId) continue;
+    const p = players[id];
+    if (!p.alive) continue;
+    if (aabbOverlap(x, y, size, size, p.x, p.y, PLAYER_SIZE, PLAYER_SIZE)) return true;
+  }
+  for (const id in bots) {
+    if (id === excludeId) continue;
+    const b = bots[id];
+    if (aabbOverlap(x, y, size, size, b.x, b.y, PLAYER_SIZE, PLAYER_SIZE)) return true;
+  }
+  return false;
+}
+
+// ── Safe fallback: scan grid for a clear spot ─────────────────────────
+function findSafeSpot(size, excludeId) {
+  const step = size + 10;
+  for (let x = 100; x < ARENA_W - 100; x += step) {
+    for (let y = 100; y < ARENA_H - 100; y += step) {
+      if (!isPositionBlocked(x, y, size, excludeId)) return { x, y };
+    }
+  }
+  return { x: 100, y: 100 }; // absolute last resort (arena edge)
+}
+
 // ── Player helpers ────────────────────────────────────────────────────
-function spawnPlayer() {
+function spawnPlayer(excludeId) {
   const margin = 150;
   let attempts = 0;
   while (attempts < 200) {
     attempts++;
     const x = margin + Math.random() * (ARENA_W - 2 * margin);
     const y = margin + Math.random() * (ARENA_H - 2 * margin);
-    let blocked = false;
-    for (const ob of obstacles) {
-      if (aabbOverlap(x, y, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
-        blocked = true;
-        break;
-      }
-    }
-    if (!blocked) return { x, y };
+    if (!isPositionBlocked(x, y, PLAYER_SIZE, excludeId)) return { x, y };
   }
-  // Fallback: center of arena
-  return { x: ARENA_W / 2, y: ARENA_H / 2 };
+  return findSafeSpot(PLAYER_SIZE, excludeId);
 }
 
 function nextColor() {
@@ -422,8 +446,23 @@ setInterval(() => {
       }
     }
     if (hitObs) {
-      p.vx = -p.vx;
-      p.vy = -p.vy;
+      // Try bouncing back; if that's also blocked, stop completely
+      const bx = p.x - p.vx;
+      const by = p.y - p.vy;
+      let bounceBlocked = false;
+      for (const ob of obstacles) {
+        if (aabbOverlap(bx, by, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+          bounceBlocked = true;
+          break;
+        }
+      }
+      if (!bounceBlocked) {
+        p.vx = -p.vx;
+        p.vy = -p.vy;
+      } else {
+        p.vx = 0;
+        p.vy = 0;
+      }
       const sock = io.sockets.sockets.get(id);
       if (sock) sock.emit('blocked');
     } else {
@@ -512,8 +551,22 @@ setInterval(() => {
       }
     }
     if (botHitObs) {
-      bot.vx = -bot.vx;
-      bot.vy = -bot.vy;
+      const bbx = bot.x - bot.vx;
+      const bby = bot.y - bot.vy;
+      let botBounceBlocked = false;
+      for (const ob of obstacles) {
+        if (aabbOverlap(bbx, bby, PLAYER_SIZE, PLAYER_SIZE, ob.x, ob.y, ob.w, ob.h)) {
+          botBounceBlocked = true;
+          break;
+        }
+      }
+      if (!botBounceBlocked) {
+        bot.vx = -bot.vx;
+        bot.vy = -bot.vy;
+      } else {
+        bot.vx = 0;
+        bot.vy = 0;
+      }
       bot.retargetAt = 0; // force retarget next tick
     } else {
       bot.x = bnx;
