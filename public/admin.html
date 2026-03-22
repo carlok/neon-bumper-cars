@@ -12,8 +12,9 @@
   input { width:100%; padding:12px; font-size:16px; border:1px solid #444; border-radius:8px; background:#1a1a1a; color:#fff; margin-bottom:16px; text-align:center; }
   button { width:100%; padding:14px; font-size:16px; font-weight:700; border:none; border-radius:8px; cursor:pointer; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; transition:opacity .2s; }
   button:active { opacity:.7; }
-  .start { background:#00ff66; color:#000; }
-  .stop  { background:#ff3366; color:#fff; }
+  .start    { background:#00ff66; color:#000; }
+  .stop     { background:#ff3366; color:#fff; }
+  .autoplay { background:#aa44ff; color:#fff; }
   #status { margin-top:16px; font-size:18px; color:#888; }
 </style>
 </head>
@@ -23,10 +24,11 @@
   <input id="pw" type="password" placeholder="Password">
   <button class="start" onclick="send('start')">▶ Start Game</button>
   <button class="stop" onclick="send('stop')">■ Stop Game</button>
+  <button class="autoplay" onclick="send('autoplay')">🤖 Autoplay (32)</button>
   <div id="status">Connecting…</div>
 </div>
 <div style="position:fixed; bottom:8px; left:0; right:0; text-align:center; font-size:12px; color:#555;">
-  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" style="color:#555; text-decoration:none;">🐙</a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.14
+  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" style="color:#555; text-decoration:none;">🐙</a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.15
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -36,7 +38,8 @@
   socket.on('gameStateChange', s => document.getElementById('status').textContent = 'State: ' + s);
   function send(action) {
     const pw = document.getElementById('pw').value;
-    socket.emit(action === 'start' ? 'admin-start' : 'admin-stop', pw);
+    const evMap = { start: 'admin-start', stop: 'admin-stop', autoplay: 'admin-autoplay' };
+    socket.emit(evMap[action], pw);
   }
 </script>
 </body>
