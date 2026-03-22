@@ -47,8 +47,13 @@ socket.on('obstacles-reset', (newObs) => {
   obstacles = newObs;
   eventQueue.push({ type: 'obstacles-reset', obstacles: newObs });
 });
-socket.on('display-zoom', (zoom) => {
-  if (gameScene) gameScene.setDisplayZoom(zoom);
+/** World units that one “cell” maps from at the default calibration (matches 40px label). */
+const DISPLAY_CELL_REF_WORLD = 40;
+/** Logical game width including sidebar (must match Phaser config width). */
+const DISPLAY_LOGIC_W = 1920;
+
+socket.on('display-cell-base', (cellBasePx) => {
+  if (gameScene) gameScene.setDisplayCellBase(cellBasePx);
 });
 
 class GameScene extends Phaser.Scene {
@@ -56,6 +61,8 @@ class GameScene extends Phaser.Scene {
 
   create() {
     gameScene = this;
+    this._cellBasePx = 40;
+    this.scale.on('resize', () => this.applyDisplayCellBaseZoom());
     this.playerGfx = {};
     this.trailEmitters = {};
     this.botAuras = {};   // pulsing aura Graphics per bot
@@ -175,11 +182,13 @@ class GameScene extends Phaser.Scene {
     this.add.text(lbCenterX, 870, '⚡ Neon Bumper Cars', {
       fontSize: '22px', fontFamily: 'monospace', color: '#ffffff', align: 'center'
     }).setOrigin(0.5).setDepth(152);
-    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.17', {
+    this.add.text(lbCenterX, 896, '© 2026 carlok  |  v1.1.18', {
       fontSize: '18px', fontFamily: 'monospace', color: '#aaaaaa', align: 'center'
     }).setOrigin(0.5).setDepth(152);
 
     this.obstaclesCreated = false;
+    this.applyDisplayCellBaseZoom();
+    this.time.delayedCall(0, () => this.applyDisplayCellBaseZoom());
   }
 
   update() {
@@ -369,10 +378,36 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  setDisplayZoom(zoom) {
-    this.cameras.main.setZoom(zoom);
-    // Center on game area (1600×1080), keeping action visible at all zoom levels
-    this.cameras.main.centerOn(800, 540);
+  /**
+   * Cell base = admin “screen cell” width in CSS px for DISPLAY_CELL_REF_WORLD (40) world units.
+   * Zoom uses the **1600-wide arena slice** of the fitted canvas (not the 320px sidebar): effective
+   * tile width is (cellBasePx × k), with integer k from min(displayW, displayH) / 540 (clamped 1…8).
+   * Approx. arena columns ≈ floor(arenaDw / (cellBasePx × k)), arenaDw = displayW × (1600/1920).
+   * Keep formula in sync with src/displayCalibrate.js.
+   */
+  setDisplayCellBase(cellBasePx) {
+    const s = Number(cellBasePx);
+    if (!Number.isFinite(s) || s < 8) return;
+    this._cellBasePx = s;
+    this.applyDisplayCellBaseZoom();
+  }
+
+  applyDisplayCellBaseZoom() {
+    const cam = this.cameras.main;
+    const dw = this.scale.displaySize.width;
+    const dh = this.scale.displaySize.height;
+    const s = this._cellBasePx ?? 40;
+    if (!dw || dw < 1) {
+      cam.setZoom(1);
+      cam.centerOn(800, 540);
+      return;
+    }
+    const k = Math.max(1, Math.min(8, Math.round(Math.min(dw, dh) / 540)));
+    const effectiveBase = s * k;
+    let z = (effectiveBase * DISPLAY_LOGIC_W) / (DISPLAY_CELL_REF_WORLD * dw);
+    z = Math.max(0.2, Math.min(z, 16));
+    cam.setZoom(z);
+    cam.centerOn(800, 540);
   }
 
   doCoinBurst(cx, cy) {

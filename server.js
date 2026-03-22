@@ -259,10 +259,12 @@ io.on('connection', (socket) => {
     io.emit('gameStateChange', gameState);
   });
 
-  socket.on('admin-cell-size', (pw, zoom) => {
+  socket.on('admin-cell-size', (pw, cellBasePx) => {
     if (pw !== ADMIN_PASSWORD) return;
-    console.log(`[ADMIN] admin-cell-size zoom=${zoom}`);
-    io.to('display').emit('display-zoom', zoom);
+    const s = Number(cellBasePx);
+    if (!Number.isFinite(s) || s < 8 || s > 512) return;
+    console.log(`[ADMIN] admin-cell-size cellBasePx=${s}`);
+    io.to('display').emit('display-cell-base', s);
   });
 
   socket.on('swipe', (dir) => {
@@ -280,11 +282,15 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || !p.alive || gameState !== 'PLAYING') {
       console.log(`[SHOOT] Rejected: id=${socket.id}, alive=${p?.alive}, state=${gameState}`);
+      if (p) socket.emit('shot-fired-ack', { shotsLeft: p.shotsLeft, rejected: 'state' });
       return;
     }
     if (p.shotsLeft <= 0) { socket.emit('shot-fired-ack', { shotsLeft: 0 }); return; }
     const now = Date.now();
-    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) return;
+    if (now - p.lastShotAt < SHOOT_COOLDOWN_MS) {
+      socket.emit('shot-fired-ack', { shotsLeft: p.shotsLeft, rejected: 'cooldown' });
+      return;
+    }
     p.lastShotAt = now;
     p.shotsLeft--;
     console.log(`[SHOOT] ${p.name} fired, shotsLeft=${p.shotsLeft}`);

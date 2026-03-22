@@ -91,7 +91,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 1. Open `/display.html` on a projector or large screen.
 2. Players scan the QR code (or navigate to `/controller.html`).
 3. Admin opens `/admin.html`, enters password (`demo123` in dev; production uses `ADMIN_PASSWORD` from env), hits **Start Game**.
-4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — one tap spawns **4 bullets** (up/down/left/right) from your center. **Ammo:** 10 shots after each spawn/rejoin; **cooldown** ~800 ms between taps; bullets travel up to ~600 px then despawn; you cannot hit yourself (owner’s bullets ignore you). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
+4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — each successful shot (server accepts after cooldown) spawns **4 bullets** (up/down/left/right) from your center. **Ammo:** 10 charges after each spawn/rejoin; **cooldown ~800 ms** — taps during cooldown do not consume ammo (the phone UI stays in sync with the server). Bullets travel up to ~600 px then despawn; you cannot hit yourself (owner’s bullets ignore you). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
    - Obstacle count scales automatically with player count: fewer obstacles for large crowds, more for small groups (formula: `max(4, 20 − ⌊players/2⌋)`).
    - **Autoplay mode** (admin "🤖 Autoplay (32)" button): spawns 32 random-walk bots as regular players — useful for stress-testing the server at max capacity.
 5. Watch out for **robot bots** (🤖👾) — they spawn on a **fixed grid** of cells so they do not overlap at rest; they chase the nearest player and deal damage on contact. Shoot them to send them back to their home cell (or a safe fallback if that cell is blocked).
@@ -104,6 +104,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 | `server.js` | Express + Socket.IO entry point, game loop |
 | `src/config.js` | All constants and emoji/name data pools |
 | `src/game.js` | Pure game-logic functions (collision, spawn, obstacles) |
+| `src/displayCalibrate.js` | Display zoom: resolution multiplier **k** and arena-aware cell math (tested; mirror in `public/display.html`) |
 | `src/bot.js` | Bot AI (`isBotDirBlocked`, `updateBotAI`) |
 | `test/game.test.js` | Unit tests for `src/game.js` |
 | `test/bot.test.js` | Unit tests for `src/bot.js` |
@@ -124,7 +125,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 
 - **Emoji players** — random people, animals, and vehicles (curated for projector visibility); your emoji + name shown large on your phone
 - **Robot bots** — 2 AI chasers (🤖👾) on rigid grid slots (no spawn overlap); red trails + pulsing aura
-- **Shooting** — tap → 4 cardinal bullets; 10 shots per life; ~800 ms cooldown; ~600 px range; self-immune; refilled on rejoin
+- **Shooting** — tap requests a shot; server applies ~800 ms cooldown and only then fires 4 cardinal bullets and decrements ammo (controller shows remaining shots from server acks, so cooldown cannot desync the UI)
 - **Adaptive obstacles** — obstacle count scales inversely with player count (`max(4, 20 − ⌊n/2⌋)`); regenerated fresh each time the game starts
 - **Autoplay stress-test** — admin panel "🤖 Autoplay (32)" fills the arena with 32 random-walk fake players to verify server performance at capacity
 - **Food/drink coins** — count scales with players (1 coin per 2 alive players, min 1); always-pulsing glow, staggered per coin
@@ -133,6 +134,7 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
 - **Adaptive render resolution** — display canvas scales to native pixels on HD, 2K, 4K, and Retina displays; emojis stay sharp at any screen size
+- **Display cell base (admin)** — sets the **CSS pixel width** of a reference tile (40 world units) on the fitted canvas. Zoom targets the **1600×1080 arena** (the 320px sidebar is excluded from “columns across playfield”): effective tile width is **cell base × k**, where **k** is an integer from screen size, `k = clamp(1…8, round(min(displayW, displayH) / 540))` (e.g. 1080p short side → k=2). Approximate arena columns ≈ `⌊(displayW × 1600/1920) / (cellBase × k)⌋`. Recalculates on window resize
 - **Wrap-around arena** (1600×1080 logical) — exit one side, appear on the other
 - **Leaderboard** — live rank, score, lives, and remaining shots for each player
 - **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)
