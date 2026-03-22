@@ -91,6 +91,27 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact! Shoot them to teleport them away.
 6. Last player standing wins — or highest score when admin stops the game.
 
+## Source layout
+
+| Path | Purpose |
+|---|---|
+| `server.js` | Express + Socket.IO entry point, game loop |
+| `src/config.js` | All constants and emoji/name data pools |
+| `src/game.js` | Pure game-logic functions (collision, spawn, obstacles) |
+| `src/bot.js` | Bot AI (`isBotDirBlocked`, `updateBotAI`) |
+| `test/game.test.js` | Unit tests for `src/game.js` |
+| `test/bot.test.js` | Unit tests for `src/bot.js` |
+| `public/` | Client HTML (display, controller, admin) |
+
+## Tests
+
+```bash
+# Run tests + coverage (Podman — no host deps)
+podman compose --profile test run --rm test
+```
+
+Coverage targets: 100% functions, ≥99% statements across `src/`.
+
 ## Features
 
 - **Emoji players** — random people, animals, and vehicles (curated for projector visibility)
