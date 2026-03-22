@@ -60,7 +60,8 @@
 </div>
 
 <div id="game-ui">
-  <div id="player-name" style="font-size:20px; color:#aaa; margin-bottom:4px;"></div>
+  <div id="player-emoji" style="font-size:72px; line-height:1.1; text-align:center;"></div>
+  <div id="player-name" style="font-size:22px; font-weight:700; color:#fff; margin-bottom:8px; text-align:center;"></div>
   <div id="status-text">CONNECTING…</div>
   <div id="stats">
     <div id="score-display">0</div>
@@ -78,7 +79,7 @@
 </div>
 
 <div style="position:fixed; bottom:8px; left:0; right:0; text-align:center; font-size:11px; color:rgba(255,255,255,0.4); z-index:999;">
-  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" style="color:rgba(255,255,255,0.4); text-decoration:none;">🐙</a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.5
+  ⚡ Neon Bumper Cars &nbsp;|&nbsp; <a href="https://github.com/carlok/neon-bumper-cars" style="color:rgba(255,255,255,0.4); text-decoration:none;">🐙</a> &nbsp;|&nbsp; © 2026 carlok &nbsp;|&nbsp; v1.1.10
 </div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
@@ -204,6 +205,7 @@ function vibe(pattern) {
 let sfx, socket;
 let myColor = '#0ff';
 let myName = '';
+let myEmoji = '';
 let myGameState = 'WAITING';
 let score = 0;
 let lives = 3;
@@ -217,6 +219,7 @@ const scoreDisplay = document.getElementById('score-display');
 const livesDisplay = document.getElementById('lives-display');
 const dirIndicator = document.getElementById('direction-indicator');
 const playerNameEl = document.getElementById('player-name');
+const playerEmojiEl = document.getElementById('player-emoji');
 const rejoinBtn = document.getElementById('rejoin-btn');
 const shotsDisplay = document.getElementById('shots-display');
 const arrows = { up:'↑', down:'↓', left:'←', right:'→' };
@@ -260,6 +263,7 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
       console.log('[JOIN] player-info received:', data);
       myColor = data.color;
       myName = data.name || myName;
+      myEmoji = data.emoji || myEmoji;
       myGameState = data.gameState;
       if (data.score !== undefined) score = data.score;
       if (data.shotsLeft !== undefined) shotsLeft = data.shotsLeft;
@@ -329,6 +333,7 @@ document.getElementById('join-btn').addEventListener('click', (e) => {
 
 function updateUI() {
   playerNameEl.textContent = myName;
+  playerEmojiEl.textContent = myEmoji;
   rejoinBtn.style.display = 'none';
 
   if (myGameState === 'WAITING') {

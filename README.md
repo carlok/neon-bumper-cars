@@ -87,7 +87,7 @@ Prints a URL like `https://something-random.trycloudflare.com`. The QR on the di
 1. Open `/display.html` on a projector or large screen.
 2. Players scan the QR code (or navigate to `/controller.html`).
 3. Admin opens `/admin.html`, enters password `demo123`, hits **Start Game**.
-4. Players swipe to move (Manhattan 4-way). **Tap to shoot** in your facing direction! Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total.
+4. Players swipe to move (Manhattan 4-way). **Tap to shoot** — fires in all 4 directions at once (10 shots per spawn, refilled when you rejoin). Collect food/drink emoji coins (+10 pts), avoid bumping other players (−1 life each). 3 lives total, 2s spawn invulnerability.
 5. Watch out for **robot bots** (🤖👾) — they chase the nearest player and deal damage on contact! Shoot them to teleport them away.
 6. Last player standing wins — or highest score when admin stops the game.
 
@@ -114,13 +114,17 @@ Coverage targets: 100% functions, ≥99% statements across `src/`.
 
 ## Features
 
-- **Emoji players** — random people, animals, and vehicles (curated for projector visibility)
+- **Emoji players** — random people, animals, and vehicles (curated for projector visibility); your emoji + name shown large on your phone
 - **Robot bots** — 2 AI chasers (🤖👾) with red particle trails that hunt players
-- **Food/drink coins** — vegan food and drinks as collectibles
+- **Shooting** — tap to fire in all 4 directions at once; 10 shots per spawn, refilled on rejoin
+- **Food/drink coins** — vegan food and drinks as collectibles; always-pulsing glow for visibility
+- **Spawn invulnerability** — 2s immunity on join and rejoin so you can't be killed immediately
 - **Terrain background** — lightweight tiled ground texture with faint emoji patches
 - **Zero external assets** — obstacles are emoji (🌲🪨💧), audio is Web Audio API oscillators, particles are Phaser-generated
 - **60 FPS server loop** with AABB collision, 2s invulnerability cooldown
+- **Adaptive render resolution** — display canvas scales to native pixels on HD, 2K, 4K, and Retina displays; emojis stay sharp at any screen size
 - **Wrap-around arena** (1920×1080) — exit one side, appear on the other
+- **Leaderboard** — live rank, score, lives, and remaining shots for each player
 - **Containerized** — always runs in Podman, host filesystem is code-only (mounted as volumes in dev)
 - **Debug logging** — server and controller log join flow for troubleshooting
 

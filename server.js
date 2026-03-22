@@ -36,7 +36,10 @@ function nextColor() {
   return NEON_COLORS[(colorIndex++) % NEON_COLORS.length];
 }
 function nextFaceEmoji() {
-  return PLAYER_EMOJIS[Math.floor(Math.random() * PLAYER_EMOJIS.length)];
+  const used = new Set(Object.values(players).map(p => p.emoji));
+  const pool = PLAYER_EMOJIS.filter(e => !used.has(e));
+  const source = pool.length > 0 ? pool : PLAYER_EMOJIS;
+  return source[Math.floor(Math.random() * source.length)];
 }
 function randomCoinEmoji() {
   return COIN_EMOJIS[Math.floor(Math.random() * COIN_EMOJIS.length)];
@@ -112,7 +115,7 @@ io.on('connection', (socket) => {
     players[socket.id] = {
       id: socket.id, x: pos.x, y: pos.y, vx: 0, vy: 0,
       color, emoji, name, score: 0, lives: 3,
-      invulnUntil: 0, alive: true, facing: 'up',
+      invulnUntil: Date.now() + INVULN_MS, alive: true, facing: 'up',
       lastShotAt: 0, shotsLeft: MAX_SHOTS,
     };
     console.log(`[PLAYER] Created: ${socket.id}, name=${name}, color=${color}`);
@@ -383,7 +386,7 @@ setInterval(() => {
   const frame = {};
   for (const id in players) {
     const p = players[id];
-    frame[id] = { x: p.x, y: p.y, color: p.color, emoji: p.emoji, name: p.name, score: p.score, lives: p.lives, alive: p.alive, invuln: now < p.invulnUntil };
+    frame[id] = { x: p.x, y: p.y, color: p.color, emoji: p.emoji, name: p.name, score: p.score, lives: p.lives, shotsLeft: p.shotsLeft, alive: p.alive, invuln: now < p.invulnUntil };
   }
   for (const botId in bots) {
     const bot = bots[botId];
