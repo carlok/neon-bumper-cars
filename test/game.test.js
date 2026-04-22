@@ -6,6 +6,7 @@ const {
   aabbOverlap, validateDir, wrapCoord,
   collidesWithObstacles, collidesWithEntities, isPositionBlocked,
   findSafeSpot, spawnPosition, generateObstacles,
+  arenaGridMetrics, gridCellOrigin,
   botSlotCorner, pickBotGridSlots, spawnBotAtAnchor,
   randomClearCoinTopLeft,
   bounceVelocity, createBullets,
@@ -372,6 +373,60 @@ describe('bounceVelocity', () => {
     const result = bounceVelocity(600, 256, 0, 4, PLAYER_SIZE, downObs);
     expect(result.vx + 0).toBe(0);
     expect(result.vy).toBe(-4);
+  });
+});
+
+// ── arenaGridMetrics ─────────────────────────────────────────────────────────
+
+describe('arenaGridMetrics', () => {
+  test('default cell step derives cols/rows/total from arena dims', () => {
+    const m = arenaGridMetrics();
+    expect(m.cols).toBe(Math.floor(ARENA_W / WORLD_GRID_CELL));
+    expect(m.rows).toBe(Math.floor(ARENA_H / WORLD_GRID_CELL));
+    expect(m.total).toBe(m.cols * m.rows);
+  });
+
+  test('custom cell step scales the grid', () => {
+    const step = 80;
+    const m = arenaGridMetrics(step);
+    expect(m.cols).toBe(Math.floor(ARENA_W / step));
+    expect(m.rows).toBe(Math.floor(ARENA_H / step));
+    expect(m.total).toBe(m.cols * m.rows);
+  });
+
+  test('cell step larger than arena clamps cols/rows to >= 1', () => {
+    const m = arenaGridMetrics(ARENA_W * 2);
+    expect(m.cols).toBeGreaterThanOrEqual(1);
+    expect(m.rows).toBeGreaterThanOrEqual(1);
+    expect(m.total).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ── gridCellOrigin ───────────────────────────────────────────────────────────
+
+describe('gridCellOrigin', () => {
+  test('slot 0 is top-left (0, 0)', () => {
+    expect(gridCellOrigin(0)).toEqual({ x: 0, y: 0 });
+  });
+
+  test('advancing by one slot advances x by cell step within a row', () => {
+    const a = gridCellOrigin(0);
+    const b = gridCellOrigin(1);
+    expect(b.y).toBe(a.y);
+    expect(b.x - a.x).toBe(WORLD_GRID_CELL);
+  });
+
+  test('wrapping past the last column moves down to next row, x back to 0', () => {
+    const { cols } = arenaGridMetrics();
+    const first = gridCellOrigin(cols);
+    expect(first.x).toBe(0);
+    expect(first.y).toBe(WORLD_GRID_CELL);
+  });
+
+  test('honors a custom cell step', () => {
+    const step = 80;
+    const { cols } = arenaGridMetrics(step);
+    expect(gridCellOrigin(cols + 1, step)).toEqual({ x: step, y: step });
   });
 });
 
